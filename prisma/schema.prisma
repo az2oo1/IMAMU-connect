@@ -1,0 +1,71 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  name      String
+  avatarUrl String?
+  bio       String?
+  posts     Post[]
+  comments  Comment[]
+  messages  Message[]
+  groups    Group[]  @relation("GroupMembers")
+  createdAt DateTime @default(now())
+}
+
+model Classroom {
+  id           String  @id @default(uuid())
+  buildingName String
+  floor        Int
+  roomNumber   String
+  latitude     Float
+  longitude    Float
+  image3DUrl   String?
+}
+
+model Post {
+  id        String    @id @default(uuid())
+  content   String
+  imageUrl  String?
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  comments  Comment[]
+  likes     Int       @default(0)
+  createdAt DateTime  @default(now())
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  content   String
+  postId    String
+  post      Post     @relation(fields: [postId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Group {
+  id          String    @id @default(uuid())
+  name        String
+  description String?
+  members     User[]    @relation("GroupMembers")
+  messages    Message[]
+  createdAt   DateTime  @default(now())
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  content   String
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id])
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+  createdAt DateTime @default(now())
+}

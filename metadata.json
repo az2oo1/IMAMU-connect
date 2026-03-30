@@ -1,0 +1,5 @@
+{
+  "name": "CampusHub",
+  "description": "A comprehensive college web application featuring an interactive campus map, academic directory, social feed, and real-time student chat groups.",
+  "requestFramePermissions": []
+}
