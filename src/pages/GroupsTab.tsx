@@ -281,22 +281,24 @@ export default function GroupsTab() {
       </div>
 
       {/* Right Sidebar: Group Info */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {showGroupInfo && (
           <motion.div 
-            initial={{ x: 300, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 300, opacity: 0 }}
-            className="w-full md:w-80 bg-neutral-900 border-l border-neutral-800 flex flex-col absolute md:relative right-0 h-full z-20 shadow-2xl md:shadow-none"
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 320, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            transition={{ type: "spring", bounce: 0, duration: 0.4 }}
+            className="bg-neutral-900 border-l border-neutral-800 flex flex-col absolute md:relative right-0 h-full z-20 shadow-2xl md:shadow-none overflow-hidden shrink-0"
           >
-            <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
-              <h2 className="text-lg font-bold text-neutral-100">Group Info</h2>
-              <button onClick={() => setShowGroupInfo(false)} className="md:hidden p-1 text-neutral-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            
-            <div className="flex-1 overflow-y-auto">
+            <div className="w-80 h-full flex flex-col">
+              <div className="p-4 border-b border-neutral-800 flex items-center justify-between shrink-0">
+                <h2 className="text-lg font-bold text-neutral-100">Group Info</h2>
+                <button onClick={() => setShowGroupInfo(false)} className="md:hidden p-1 text-neutral-400 hover:text-white">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto">
               <div className="p-6 text-center border-b border-neutral-800">
                 <div className="w-20 h-20 mx-auto rounded-2xl bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-neutral-400 mb-4 shadow-inner">
                   <Hash className="w-10 h-10" />

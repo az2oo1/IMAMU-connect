@@ -3,6 +3,7 @@ import { motion } from 'motion/react';
 import { Calendar, Clock, ChevronRight, Newspaper, ArrowRight } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
+import NewsArticleModal from '../components/NewsArticleModal';
 
 const NEWS_ITEMS = [
   {
@@ -57,6 +58,7 @@ const CATEGORIES = ["All", "Campus", "Academic", "Sports", "Events"];
 
 export default function NewsTab() {
   const [activeCategory, setActiveCategory] = useState("All");
+  const [selectedArticle, setSelectedArticle] = useState<typeof NEWS_ITEMS[0] | null>(null);
   const dragScroll = useDraggableScroll<HTMLDivElement>();
 
   const filteredNews = NEWS_ITEMS.filter(
@@ -116,6 +118,7 @@ export default function NewsTab() {
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5 }}
             className="mb-10 group cursor-pointer"
+            onClick={() => setSelectedArticle(featuredPost)}
           >
             <div className="relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 aspect-[2/1] md:aspect-[2.5/1]">
               <img 
@@ -160,6 +163,7 @@ export default function NewsTab() {
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: index * 0.1 + 0.2 }}
               key={post.id}
+              onClick={() => setSelectedArticle(post)}
               className="group cursor-pointer bg-neutral-900/40 backdrop-blur-md border border-white/5 hover:border-primary-500/30 rounded-3xl overflow-hidden transition-all duration-300 flex flex-col"
             >
               <div className="relative h-48 overflow-hidden">
@@ -204,6 +208,11 @@ export default function NewsTab() {
           ))}
         </div>
 
+        <NewsArticleModal 
+          article={selectedArticle} 
+          isOpen={!!selectedArticle} 
+          onClose={() => setSelectedArticle(null)} 
+        />
       </div>
     </motion.div>
   );

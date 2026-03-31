@@ -82,6 +82,15 @@ export default function ExploreTab() {
   const [feedType, setFeedType] = useState<'discover' | 'trending'>('discover');
   const [likedPosts, setLikedPosts] = useState<Set<number>>(new Set());
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [expandedPostId, setExpandedPostId] = useState<number | null>(null);
+
+  const displayedPosts = [...BENTO_POSTS].sort((a, b) => {
+    if (feedType === 'trending') {
+      return b.likes - a.likes;
+    }
+    // Discover: default order
+    return a.id - b.id;
+  });
 
   const handleInteraction = (callback: () => void) => {
     if (!isAuthenticated) {
@@ -155,7 +164,9 @@ export default function ExploreTab() {
 
         {/* Feed */}
         <div className="max-w-2xl mx-auto space-y-6 pb-24">
-          {BENTO_POSTS.map((post, index) => (
+          {displayedPosts.map((post, index) => {
+            const isExpanded = expandedPostId === post.id;
+            return (
             <motion.div 
               initial={{ y: 30, opacity: 0, scale: 0.95 }}
               animate={{ y: 0, opacity: 1, scale: 1 }}
@@ -166,8 +177,9 @@ export default function ExploreTab() {
                 damping: 20 
               }}
               key={post.id} 
+              onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
               className={clsx(
-                "group relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900/40 backdrop-blur-md shadow-2xl hover:border-primary-500/50 transition-all duration-500 flex flex-col",
+                "group relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900/40 backdrop-blur-md shadow-2xl hover:border-primary-500/50 transition-all duration-500 flex flex-col cursor-pointer",
                 post.type === 'featured' ? 'min-h-[400px]' : 'min-h-[250px]'
               )}
             >
@@ -190,7 +202,7 @@ export default function ExploreTab() {
               <div className="relative z-10 flex flex-col h-full p-6 md:p-8">
                 
                 {/* Top Meta */}
-                <div className="flex items-center justify-between mb-auto">
+                <div className="flex items-center justify-between mb-auto" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-3">
                     <ProfilePopover 
                       user={{
@@ -235,7 +247,7 @@ export default function ExploreTab() {
                   )}
 
                   <h2 className={clsx(
-                    "font-black text-white leading-tight tracking-tight mb-3",
+                    "font-black text-white leading-tight tracking-tight mb-3 transition-all",
                     post.type === 'featured' ? "text-3xl md:text-5xl" : "text-xl md:text-2xl"
                   )}>
                     {post.title}
@@ -243,8 +255,10 @@ export default function ExploreTab() {
                   
                   {post.content && (
                     <p className={clsx(
-                      "text-neutral-300 font-medium leading-relaxed",
-                      post.type === 'featured' ? "text-lg md:text-xl line-clamp-3" : "text-sm line-clamp-4"
+                      "text-neutral-300 font-medium leading-relaxed transition-all",
+                      post.type === 'featured' 
+                        ? (isExpanded ? "" : "text-lg md:text-xl line-clamp-3") 
+                        : (isExpanded ? "" : "text-sm line-clamp-4")
                     )}>
                       {post.content}
                     </p>
@@ -252,7 +266,7 @@ export default function ExploreTab() {
                 </div>
 
                 {/* Bottom Actions */}
-                <div className="mt-8 pt-4 border-t border-white/10 flex items-center justify-between">
+                <div className="mt-8 pt-4 border-t border-white/10 flex items-center justify-between" onClick={(e) => e.stopPropagation()}>
                   <div className="flex items-center gap-1">
                     <button 
                       onClick={() => toggleLike(post.id)}
@@ -283,7 +297,7 @@ export default function ExploreTab() {
 
               </div>
             </motion.div>
-          ))}
+          )})}
         </div>
       </div>
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
