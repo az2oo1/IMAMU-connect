@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { ShieldAlert, Mail, KeyRound, CheckCircle2 } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';

@@ -1,10 +1,12 @@
-import { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserPlus, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface ProfilePopoverProps {
   children: React.ReactNode;
+  key?: React.Key;
   user: {
     name: string;
     handle: string;
@@ -18,34 +20,95 @@ interface ProfilePopoverProps {
 export default function ProfilePopover({ children, user }: ProfilePopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isFollowing, setIsFollowing] = useState(user.isFollowing || false);
+  const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
+  const [hPosition, setHPosition] = useState<'left' | 'right'>('left');
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
   const popoverRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (popoverRef.current && !popoverRef.current.contains(event.target as Node)) {
+      if (popoverRef.current && !popoverRef.current.contains(event.target as Node) && 
+          triggerRef.current && !triggerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
       }
     }
+    
+    function handleScroll() {
+      if (isOpen) {
+        setIsOpen(false);
+      }
+    }
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+    window.addEventListener("scroll", handleScroll, true); // Use capture phase to catch all scrolls
+    
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const spaceRight = window.innerWidth - rect.left;
+      
+      let newPos: 'bottom' | 'top' = 'bottom';
+      let newHPos: 'left' | 'right' = 'left';
+
+      // Vertical positioning
+      if (spaceBelow < 300 && spaceAbove > spaceBelow) {
+        newPos = 'top';
+      } else {
+        newPos = 'bottom';
+      }
+
+      // Horizontal positioning (popover is w-72 which is 288px)
+      if (spaceRight < 300) {
+        newHPos = 'right';
+      } else {
+        newHPos = 'left';
+      }
+
+      setPosition(newPos);
+      setHPosition(newHPos);
+      
+      // Calculate fixed coordinates
+      setCoords({
+        top: newPos === 'bottom' ? rect.bottom + 8 : rect.top - 8,
+        left: newHPos === 'left' ? rect.left : rect.right
+      });
+    }
+  }, [isOpen]);
 
   return (
-    <div className="relative inline-block" ref={popoverRef}>
-      <div onClick={() => setIsOpen(!isOpen)} className="cursor-pointer">
+    <>
+      <span ref={triggerRef} onClick={() => setIsOpen(!isOpen)} className="cursor-pointer inline-block">
         {children}
-      </div>
+      </span>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
-            transition={{ duration: 0.15 }}
-            className="absolute z-50 top-full left-0 mt-2 w-72 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
-          >
+      {createPortal(
+        <AnimatePresence>
+          {isOpen && (
+            <motion.div
+              ref={popoverRef}
+              initial={{ opacity: 0, y: position === 'top' ? 10 : -10, scale: 0.95 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: position === 'top' ? 10 : -10, scale: 0.95 }}
+              transition={{ duration: 0.15 }}
+              style={{
+                position: 'fixed',
+                top: coords.top,
+                left: coords.left,
+                transform: `${position === 'top' ? 'translateY(-100%)' : ''} ${hPosition === 'right' ? 'translateX(-100%)' : ''}`,
+                zIndex: 99999
+              }}
+              className="w-72 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
+            >
             {/* Banner */}
             <div 
               className="h-20 bg-neutral-800 w-full"
@@ -94,7 +157,7 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsOpen(false);
-                  navigate('/personal'); // In a real app, navigate to /profile/:handle
+                  navigate(`/profile/${user.handle}`);
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl transition-colors text-sm font-medium"
               >
@@ -103,8 +166,10 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
               </button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
+    </>
   );
 }

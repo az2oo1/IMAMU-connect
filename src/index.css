@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Poppins:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
 
 @theme {
   --color-primary-100: var(--accent-100);
@@ -10,6 +11,16 @@
   --color-primary-700: var(--accent-700);
   --color-primary-800: var(--accent-800);
   --color-primary-900: var(--accent-900);
+
+  --font-sans: var(--app-font);
+
+  --radius-sm: calc(var(--app-radius) * 0.25);
+  --radius: calc(var(--app-radius) * 0.5);
+  --radius-md: calc(var(--app-radius) * 0.75);
+  --radius-lg: var(--app-radius);
+  --radius-xl: calc(var(--app-radius) * 1.5);
+  --radius-2xl: calc(var(--app-radius) * 2);
+  --radius-3xl: calc(var(--app-radius) * 3);
 }
 
 @layer utilities {
@@ -20,9 +31,26 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+  
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: #3f3f46; /* neutral-700 */
+    border-radius: 20px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background-color: #52525b; /* neutral-600 */
+  }
 }
 
 :root {
+  --app-radius: 0.5rem;
+  --app-font: 'Inter', sans-serif;
   --accent-100: #e0e7ff;
   --accent-200: #c7d2fe;
   --accent-300: #a5b4fc;
@@ -34,6 +62,22 @@
   --accent-900: #312e81;
 }
 
+body {
+  font-family: var(--app-font);
+}
+
+.font-inter { --app-font: 'Inter', sans-serif; }
+.font-roboto { --app-font: 'Roboto', sans-serif; }
+.font-poppins { --app-font: 'Poppins', sans-serif; }
+.font-playfair { --app-font: 'Playfair Display', serif; }
+.font-mono { --app-font: 'JetBrains Mono', monospace; }
+
+.radius-none { --app-radius: 0rem; }
+.radius-sm { --app-radius: 0.25rem; }
+.radius-md { --app-radius: 0.5rem; }
+.radius-lg { --app-radius: 0.75rem; }
+.radius-xl { --app-radius: 1rem; }
+
 .theme-indigo {
   --accent-100: #e0e7ff;
   --accent-200: #c7d2fe;
@@ -44,6 +88,42 @@
   --accent-700: #4338ca;
   --accent-800: #3730a3;
   --accent-900: #312e81;
+}
+
+.theme-blue {
+  --accent-100: #dbeafe;
+  --accent-200: #bfdbfe;
+  --accent-300: #93c5fd;
+  --accent-400: #60a5fa;
+  --accent-500: #3b82f6;
+  --accent-600: #2563eb;
+  --accent-700: #1d4ed8;
+  --accent-800: #1e40af;
+  --accent-900: #1e3a8a;
+}
+
+.theme-cyan {
+  --accent-100: #cffafe;
+  --accent-200: #a5f3fc;
+  --accent-300: #67e8f9;
+  --accent-400: #22d3ee;
+  --accent-500: #06b6d4;
+  --accent-600: #0891b2;
+  --accent-700: #0e7490;
+  --accent-800: #155e75;
+  --accent-900: #164e63;
+}
+
+.theme-teal {
+  --accent-100: #ccfbf1;
+  --accent-200: #99f6e4;
+  --accent-300: #5eead4;
+  --accent-400: #2dd4bf;
+  --accent-500: #14b8a6;
+  --accent-600: #0d9488;
+  --accent-700: #0f766e;
+  --accent-800: #115e59;
+  --accent-900: #134e4a;
 }
 
 .theme-emerald {
@@ -58,16 +138,40 @@
   --accent-900: #064e3b;
 }
 
-.theme-rose {
-  --accent-100: #ffe4e6;
-  --accent-200: #fecdd3;
-  --accent-300: #fda4af;
-  --accent-400: #fb7185;
-  --accent-500: #f43f5e;
-  --accent-600: #e11d48;
-  --accent-700: #be123c;
-  --accent-800: #9f1239;
-  --accent-900: #881337;
+.theme-green {
+  --accent-100: #dcfce7;
+  --accent-200: #bbf7d0;
+  --accent-300: #86efac;
+  --accent-400: #4ade80;
+  --accent-500: #22c55e;
+  --accent-600: #16a34a;
+  --accent-700: #15803d;
+  --accent-800: #166534;
+  --accent-900: #14532d;
+}
+
+.theme-lime {
+  --accent-100: #ecfccb;
+  --accent-200: #d9f99d;
+  --accent-300: #bef264;
+  --accent-400: #a3e635;
+  --accent-500: #84cc16;
+  --accent-600: #65a30d;
+  --accent-700: #4d7c0f;
+  --accent-800: #3f6212;
+  --accent-900: #365314;
+}
+
+.theme-yellow {
+  --accent-100: #fef9c3;
+  --accent-200: #fef08a;
+  --accent-300: #fde047;
+  --accent-400: #facc15;
+  --accent-500: #eab308;
+  --accent-600: #ca8a04;
+  --accent-700: #a16207;
+  --accent-800: #854d0e;
+  --accent-900: #713f12;
 }
 
 .theme-amber {
@@ -80,6 +184,78 @@
   --accent-700: #b45309;
   --accent-800: #92400e;
   --accent-900: #78350f;
+}
+
+.theme-orange {
+  --accent-100: #ffedd5;
+  --accent-200: #fed7aa;
+  --accent-300: #fdba74;
+  --accent-400: #fb923c;
+  --accent-500: #f97316;
+  --accent-600: #ea580c;
+  --accent-700: #c2410c;
+  --accent-800: #9a3412;
+  --accent-900: #7c2d12;
+}
+
+.theme-red {
+  --accent-100: #fee2e2;
+  --accent-200: #fecaca;
+  --accent-300: #fca5a5;
+  --accent-400: #f87171;
+  --accent-500: #ef4444;
+  --accent-600: #dc2626;
+  --accent-700: #b91c1c;
+  --accent-800: #991b1b;
+  --accent-900: #7f1d1d;
+}
+
+.theme-rose {
+  --accent-100: #ffe4e6;
+  --accent-200: #fecdd3;
+  --accent-300: #fda4af;
+  --accent-400: #fb7185;
+  --accent-500: #f43f5e;
+  --accent-600: #e11d48;
+  --accent-700: #be123c;
+  --accent-800: #9f1239;
+  --accent-900: #881337;
+}
+
+.theme-pink {
+  --accent-100: #fce7f3;
+  --accent-200: #fbcfe8;
+  --accent-300: #f9a8d4;
+  --accent-400: #f472b6;
+  --accent-500: #ec4899;
+  --accent-600: #db2777;
+  --accent-700: #be185d;
+  --accent-800: #9d174d;
+  --accent-900: #831843;
+}
+
+.theme-fuchsia {
+  --accent-100: #fae8ff;
+  --accent-200: #f5d0fe;
+  --accent-300: #f0abfc;
+  --accent-400: #e879f9;
+  --accent-500: #d946ef;
+  --accent-600: #c026d3;
+  --accent-700: #a21caf;
+  --accent-800: #86198f;
+  --accent-900: #701a75;
+}
+
+.theme-purple {
+  --accent-100: #f3e8ff;
+  --accent-200: #e9d5ff;
+  --accent-300: #d8b4fe;
+  --accent-400: #c084fc;
+  --accent-500: #a855f7;
+  --accent-600: #9333ea;
+  --accent-700: #7e22ce;
+  --accent-800: #6b21a8;
+  --accent-900: #581c87;
 }
 
 .theme-violet {

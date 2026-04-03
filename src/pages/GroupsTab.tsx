@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import ProfilePopover from '../components/ProfilePopover';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
+import FormattedText from '../components/FormattedText';
 
 const CATEGORIES = ['All', 'General', 'Science', 'Computer Science', 'Humanities'];
 
@@ -22,7 +23,26 @@ const AVAILABLE_GROUPS = [
   { id: '8', name: 'CHEM101', members: 195, description: 'Intro to Chemistry', category: 'Science' },
 ];
 
-const MESSAGES = [
+type Attachment = {
+  name: string;
+  size: string;
+  type: 'image' | 'file';
+  url?: string;
+};
+
+type Message = {
+  id: number;
+  sender: string;
+  text: string;
+  time: string;
+  isMe: boolean;
+  replyTo?: number;
+  attachment?: Attachment;
+  deletedForMe?: boolean;
+  deletedForAll?: boolean;
+};
+
+const MESSAGES: Message[] = [
   { id: 1, sender: 'Student_842', text: 'Did anyone understand the last lecture on pointers?', time: '10:42 AM', isMe: false },
   { id: 2, sender: 'Student_105', text: 'Yeah, it was a bit confusing. I found a good YouTube video about it though.', time: '10:45 AM', isMe: false },
   { id: 3, sender: 'Me', text: 'Could you share the link? I\'m completely lost.', time: '10:46 AM', isMe: true },
@@ -38,7 +58,10 @@ const GROUP_MEMBERS = [
 
 export default function GroupsTab() {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState(MESSAGES);
+  const [messages, setMessages] = useState<Message[]>(MESSAGES);
+  const [replyingTo, setReplyingTo] = useState<Message | null>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [activeMessageOptions, setActiveMessageOptions] = useState<number | null>(null);
   const [joinedGroups, setJoinedGroups] = useState(INITIAL_JOINED);
   const [availableGroups, setAvailableGroups] = useState(AVAILABLE_GROUPS);
   const [showJoinModal, setShowJoinModal] = useState(false);
@@ -47,10 +70,40 @@ export default function GroupsTab() {
   const [activeGroupId, setActiveGroupId] = useState(INITIAL_JOINED[0].id);
   const [joinSearchQuery, setJoinSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const navigate = useNavigate();
   const dragScroll = useDraggableScroll<HTMLDivElement>();
+  
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const activeGroup = joinedGroups.find(g => g.id === activeGroupId) || joinedGroups[0];
+
+  const handleScroll = () => {
+    if (!messagesContainerRef.current) return;
+    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
+    // Show button if we are more than 100px away from the bottom
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setShowScrollButton(!isNearBottom);
+  };
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = `${Math.min(textareaRef.current.scrollHeight, 150)}px`;
+    }
+  }, [message]);
+
+  // Scroll to bottom when new message is added
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
 
   const handleJoin = (group: any) => {
     setJoinedGroups([...joinedGroups, { ...group, unread: 0 }]);
@@ -70,18 +123,48 @@ export default function GroupsTab() {
 
   const handleSendMessage = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!message.trim()) return;
+    if (!message.trim() && !attachment) return;
     
-    const newMessage = {
+    let newAttachment: Attachment | undefined;
+    if (attachment) {
+      newAttachment = {
+        name: attachment.name,
+        size: (attachment.size / 1024).toFixed(1) + ' KB',
+        type: attachment.type.startsWith('image/') ? 'image' : 'file',
+        url: URL.createObjectURL(attachment)
+      };
+    }
+
+    const newMessage: Message = {
       id: Date.now(),
       sender: 'Me',
       text: message,
       time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      isMe: true
+      isMe: true,
+      replyTo: replyingTo?.id,
+      attachment: newAttachment
     };
     
     setMessages([...messages, newMessage]);
     setMessage('');
+    setReplyingTo(null);
+    setAttachment(null);
+  };
+
+  const handleDeleteForMe = (id: number) => {
+    setMessages(messages.map(m => m.id === id ? { ...m, deletedForMe: true } : m));
+    setActiveMessageOptions(null);
+  };
+
+  const handleDeleteForAll = (id: number) => {
+    setMessages(messages.map(m => m.id === id ? { ...m, deletedForAll: true, text: 'This message was deleted.', attachment: undefined } : m));
+    setActiveMessageOptions(null);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      setAttachment(e.target.files[0]);
+    }
   };
 
   const filteredAvailableGroups = availableGroups.filter(g => {
@@ -119,7 +202,7 @@ export default function GroupsTab() {
             />
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
           {joinedGroups.map((group, index) => (
             <motion.button
               initial={{ opacity: 0, x: -20 }}
@@ -191,77 +274,299 @@ export default function GroupsTab() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6">
+            <div 
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
+              className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 relative"
+            >
               <div className="text-center">
                 <div className="inline-block bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs px-3 py-1 rounded-full">
                   Welcome to the {activeGroup.name} group! This is a space for students to discuss the course.
                 </div>
               </div>
-              {messages.map((msg, index) => (
-                <motion.div 
-                  initial={{ opacity: 0, y: 10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                  key={msg.id} 
-                  className={clsx("flex flex-col", msg.isMe ? "items-end" : "items-start")}
-                >
-                  <div className="flex items-end gap-2 max-w-[80%]">
-                    {!msg.isMe && (
-                      <ProfilePopover
-                        user={{
-                          name: msg.sender,
-                          handle: msg.sender.toLowerCase(),
-                          bio: 'Computer Science student at Imam Mohammad Ibn Saud Islamic University.',
-                          avatar: `https://picsum.photos/seed/${msg.sender}/100/100`
-                        }}
-                      >
-                        <div className="w-8 h-8 rounded-full bg-neutral-800 flex-shrink-0 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden">
-                          <img 
-                            src={`https://picsum.photos/seed/${msg.sender}/100/100`} 
-                            alt={msg.sender} 
-                            className="w-full h-full object-cover" 
-                            referrerPolicy="no-referrer" 
-                          />
+              {messages.filter(m => !m.deletedForMe).map((msg, index) => {
+                const isDeleted = msg.deletedForAll;
+                const repliedMsg = msg.replyTo ? messages.find(m => m.id === msg.replyTo) : null;
+
+                return (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                    key={msg.id} 
+                    className={clsx("flex flex-col group/message", msg.isMe ? "items-end" : "items-start")}
+                  >
+                    <div className={clsx("flex items-end gap-2 max-w-[80%]", msg.isMe ? "flex-row-reverse" : "flex-row")}>
+                      {!msg.isMe && (
+                        <ProfilePopover
+                          user={{
+                            name: msg.sender,
+                            handle: msg.sender.toLowerCase(),
+                            bio: 'Computer Science student at Imam Mohammad Ibn Saud Islamic University.',
+                            avatar: `https://picsum.photos/seed/${msg.sender}/100/100`
+                          }}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-neutral-800 flex-shrink-0 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden">
+                            <img 
+                              src={`https://picsum.photos/seed/${msg.sender}/100/100`} 
+                              alt={msg.sender} 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer" 
+                            />
+                          </div>
+                        </ProfilePopover>
+                      )}
+                      
+                      <div className="flex flex-col gap-1 relative">
+                        {/* Options Menu */}
+                        <div className={clsx(
+                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1",
+                          msg.isMe ? "right-full mr-2" : "left-full ml-2"
+                        )}>
+                          <div className="relative">
+                            <button 
+                              onClick={() => setActiveMessageOptions(activeMessageOptions === msg.id ? null : msg.id)}
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                            
+                            <AnimatePresence>
+                              {activeMessageOptions === msg.id && (
+                                <motion.div 
+                                  initial={{ opacity: 0, scale: 0.95 }}
+                                  animate={{ opacity: 1, scale: 1 }}
+                                  exit={{ opacity: 0, scale: 0.95 }}
+                                  className={clsx(
+                                    "absolute top-full mt-1 w-48 bg-neutral-800 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden z-50",
+                                    msg.isMe ? "right-0" : "left-0"
+                                  )}
+                                >
+                                  <button 
+                                    onClick={() => { setReplyingTo(msg); setActiveMessageOptions(null); }}
+                                    className="w-full text-left px-4 py-2 hover:bg-neutral-700 text-neutral-200 text-sm transition-colors flex items-center gap-2"
+                                  >
+                                    <Reply className="w-4 h-4" /> Reply
+                                  </button>
+                                  {msg.isMe && !isDeleted && (
+                                    <>
+                                      <button 
+                                        onClick={() => handleDeleteForMe(msg.id)}
+                                        className="w-full text-left px-4 py-2 hover:bg-neutral-700 text-neutral-200 text-sm transition-colors flex items-center gap-2"
+                                      >
+                                        <Trash2 className="w-4 h-4" /> Delete for me
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteForAll(msg.id)}
+                                        className="w-full text-left px-4 py-2 hover:bg-red-500/20 text-red-400 text-sm transition-colors flex items-center gap-2"
+                                      >
+                                        <Trash2 className="w-4 h-4" /> Delete for everyone
+                                      </button>
+                                    </>
+                                  )}
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         </div>
-                      </ProfilePopover>
-                    )}
-                    <div className={clsx(
-                      "px-4 py-2.5 rounded-2xl text-sm shadow-sm",
-                      msg.isMe 
-                        ? "bg-primary-600 text-white rounded-br-sm" 
-                        : "bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-bl-sm"
-                    )}>
-                      {!msg.isMe && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{msg.sender}</div>}
-                      {msg.text}
+
+                        <div className={clsx(
+                          "px-4 py-2.5 rounded-2xl text-sm shadow-sm min-w-0 break-words whitespace-pre-wrap relative",
+                          msg.isMe 
+                            ? "bg-primary-600 text-white rounded-br-sm" 
+                            : "bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-bl-sm",
+                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800"
+                        )}>
+                          {!msg.isMe && !isDeleted && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{msg.sender}</div>}
+                          
+                          {repliedMsg && !isDeleted && (
+                            <div className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs">
+                              <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.sender}</div>
+                              <div className="truncate opacity-80">{repliedMsg.text}</div>
+                            </div>
+                          )}
+
+                          {msg.attachment && !isDeleted && (
+                            <div className="mb-2 rounded-xl overflow-hidden bg-black/20">
+                              {msg.attachment.type === 'image' ? (
+                                <img src={msg.attachment.url} alt="attachment" className="max-w-full max-h-64 object-cover" />
+                              ) : (
+                                <div className="flex items-center gap-3 p-3">
+                                  <div className="w-10 h-10 rounded-lg bg-primary-500/20 flex items-center justify-center">
+                                    <File className="w-5 h-5 text-primary-300" />
+                                  </div>
+                                  <div>
+                                    <div className="font-medium text-sm truncate max-w-[150px]">{msg.attachment.name}</div>
+                                    <div className="text-xs opacity-70">{msg.attachment.size}</div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          <FormattedText text={msg.text} />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-[10px] text-neutral-600 mt-1 px-10">{msg.time}</div>
-                </motion.div>
-              ))}
+                    <div className={clsx("text-[10px] text-neutral-600 mt-1", msg.isMe ? "pr-2" : "pl-10")}>{msg.time}</div>
+                  </motion.div>
+                );
+              })}
+              <div ref={messagesEndRef} />
             </div>
 
-            {/* Input */}
-            <div className="p-4 bg-neutral-900 border-t border-neutral-800">
-              <form 
-                onSubmit={handleSendMessage}
-                className="flex items-center gap-2 bg-neutral-950 border border-neutral-800 rounded-full pl-4 pr-1 py-1 focus-within:border-primary-500 transition-colors"
-              >
-                <input 
-                  type="text" 
-                  placeholder={`Message ${activeGroup.name} students...`} 
-                  className="flex-1 bg-transparent border-none outline-none text-sm text-neutral-200"
-                  value={message}
-                  onChange={(e) => setMessage(e.target.value)}
-                />
-                <button 
-                  type="submit"
-                  disabled={!message.trim()}
-                  className="p-2 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white rounded-full transition-colors"
+            {/* Scroll to bottom button */}
+            <AnimatePresence>
+              {showScrollButton && (
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+                  className="absolute bottom-24 right-6 z-10"
                 >
-                  <Send className="w-4 h-4" />
-                </button>
-              </form>
-            </div>
+                  <button
+                    onClick={scrollToBottom}
+                    className="w-10 h-10 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-full shadow-lg flex items-center justify-center text-neutral-300 hover:text-white transition-colors"
+                  >
+                    <ChevronDown className="w-5 h-5" />
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+              <div className="p-4 bg-neutral-900 border-t border-neutral-800 relative flex flex-col gap-2">
+                {/* Replying To Preview */}
+                <AnimatePresence>
+                  {replyingTo && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, y: 10, height: 0 }}
+                      className="flex items-center justify-between bg-neutral-800/50 rounded-xl p-3 border border-neutral-700/50"
+                    >
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="text-xs font-bold text-primary-400">Replying to {replyingTo.sender}</span>
+                        <span className="text-sm text-neutral-300 truncate">{replyingTo.text}</span>
+                      </div>
+                      <button 
+                        onClick={() => setReplyingTo(null)}
+                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Attachment Preview */}
+                <AnimatePresence>
+                  {attachment && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, y: 10, height: 0 }}
+                      className="flex items-center justify-between bg-neutral-800/50 rounded-xl p-3 border border-neutral-700/50"
+                    >
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-10 h-10 rounded-lg bg-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
+                          {attachment.type.startsWith('image/') ? (
+                            <img src={URL.createObjectURL(attachment)} alt="preview" className="w-full h-full object-cover" />
+                          ) : (
+                            <File className="w-5 h-5 text-neutral-400" />
+                          )}
+                        </div>
+                        <div className="flex flex-col overflow-hidden">
+                          <span className="text-sm font-medium text-neutral-200 truncate">{attachment.name}</span>
+                          <span className="text-xs text-neutral-500">{(attachment.size / 1024).toFixed(1)} KB</span>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => setAttachment(null)}
+                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Mentions Dropdown */}
+                <AnimatePresence>
+                  {message.includes('@') && !message.split('@').pop()?.includes(' ') && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute bottom-full left-4 mb-2 w-64 bg-neutral-800 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden z-50"
+                    >
+                      <div className="p-2 text-xs font-bold text-neutral-400 uppercase tracking-wider border-b border-neutral-700">
+                        Mention User
+                      </div>
+                      <div className="max-h-48 overflow-y-auto custom-scrollbar">
+                        {['alexchen', 'sarahj', 'mike_dev', 'emma_w', 'studentcouncil']
+                          .filter(u => u.includes(message.split('@').pop()?.toLowerCase() || ''))
+                          .map(user => (
+                            <button
+                              key={user}
+                              type="button"
+                              onClick={() => {
+                                const parts = message.split('@');
+                                parts.pop();
+                                setMessage(parts.join('@') + '@' + user + ' ');
+                              }}
+                              className="w-full text-left px-4 py-2 hover:bg-primary-600 hover:text-white text-neutral-200 text-sm transition-colors flex items-center gap-2"
+                            >
+                              <div className="w-6 h-6 rounded-full bg-neutral-700 overflow-hidden shrink-0">
+                                <img src={`https://picsum.photos/seed/${user}/100/100`} alt={user} className="w-full h-full object-cover" />
+                              </div>
+                              @{user}
+                            </button>
+                          ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                <form 
+                  onSubmit={handleSendMessage}
+                  className="flex items-end gap-2 bg-neutral-950 border border-neutral-800 rounded-3xl pl-2 pr-1 py-1 focus-within:border-primary-500 transition-colors"
+                >
+                  <input 
+                    type="file" 
+                    id="file-upload" 
+                    className="hidden" 
+                    onChange={handleFileChange}
+                  />
+                  <label 
+                    htmlFor="file-upload"
+                    className="p-2 mb-0.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 rounded-full transition-colors shrink-0 cursor-pointer"
+                    title="Attach file"
+                  >
+                    <Paperclip className="w-5 h-5" />
+                  </label>
+                  <textarea 
+                    ref={textareaRef}
+                    rows={1}
+                    placeholder={`Message ${activeGroup.name} students...`} 
+                    className="flex-1 bg-transparent border-none outline-none text-sm text-neutral-200 resize-none py-2.5 max-h-[150px] custom-scrollbar"
+                    value={message}
+                    onChange={(e) => setMessage(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                  />
+                  <button 
+                    type="submit"
+                    disabled={!message.trim() && !attachment}
+                    className="p-2 mb-0.5 bg-primary-600 hover:bg-primary-700 disabled:bg-neutral-800 disabled:text-neutral-500 text-white rounded-full transition-colors shrink-0"
+                  >
+                    <Send className="w-4 h-4" />
+                  </button>
+                </form>
+              </div>
           </>
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-neutral-500 p-6 text-center">
@@ -288,9 +593,9 @@ export default function GroupsTab() {
             animate={{ width: 320, opacity: 1 }}
             exit={{ width: 0, opacity: 0 }}
             transition={{ type: "spring", bounce: 0, duration: 0.4 }}
-            className="bg-neutral-900 border-l border-neutral-800 flex flex-col absolute md:relative right-0 h-full z-20 shadow-2xl md:shadow-none overflow-hidden shrink-0"
+            className="bg-neutral-900 flex flex-col absolute md:relative right-0 h-full z-20 shadow-2xl md:shadow-none overflow-hidden shrink-0"
           >
-            <div className="w-80 h-full flex flex-col">
+            <div className="w-80 h-full flex flex-col border-l border-neutral-800">
               <div className="p-4 border-b border-neutral-800 flex items-center justify-between shrink-0">
                 <h2 className="text-lg font-bold text-neutral-100">Group Info</h2>
                 <button onClick={() => setShowGroupInfo(false)} className="md:hidden p-1 text-neutral-400 hover:text-white">
@@ -298,7 +603,7 @@ export default function GroupsTab() {
                 </button>
               </div>
               
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-6 text-center border-b border-neutral-800">
                 <div className="w-20 h-20 mx-auto rounded-2xl bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-neutral-400 mb-4 shadow-inner">
                   <Hash className="w-10 h-10" />
@@ -399,6 +704,7 @@ export default function GroupsTab() {
                 </div>
               </div>
             </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -455,7 +761,7 @@ export default function GroupsTab() {
                   ))}
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-2">
+              <div className="flex-1 overflow-y-auto p-2 scrollbar-hide">
                 {filteredAvailableGroups.length === 0 ? (
                   <div className="text-center text-neutral-500 py-8">No more groups available to join.</div>
                 ) : (

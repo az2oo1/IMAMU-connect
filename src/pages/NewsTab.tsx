@@ -14,7 +14,10 @@ const NEWS_ITEMS = [
     readTime: "5 min read",
     image: "https://picsum.photos/seed/science/1200/600",
     excerpt: "The state-of-the-art facility will house advanced laboratories, collaborative spaces for STEM students, and a new student cafe. Join us for the ribbon-cutting ceremony.",
-    featured: true
+    featured: true,
+    author: "University Press",
+    authorAvatar: "https://picsum.photos/seed/unipress/100/100",
+    isFollowedAuthor: true
   },
   {
     id: 2,
@@ -23,7 +26,10 @@ const NEWS_ITEMS = [
     date: "Mar 29, 2026",
     readTime: "2 min read",
     image: "https://picsum.photos/seed/library2/600/400",
-    excerpt: "Make sure to meet with your academic advisor before the April 15th deadline to secure your classes for the upcoming semester."
+    excerpt: "Make sure to meet with your academic advisor before the April 15th deadline to secure your classes for the upcoming semester.",
+    author: "Academic Affairs",
+    authorAvatar: "https://picsum.photos/seed/academics/100/100",
+    isFollowedAuthor: false
   },
   {
     id: 3,
@@ -32,7 +38,10 @@ const NEWS_ITEMS = [
     date: "Mar 30, 2026",
     readTime: "3 min read",
     image: "https://picsum.photos/seed/basketball/600/400",
-    excerpt: "A thrilling overtime victory secures our spot in the regional championship game this weekend. Get your tickets now!"
+    excerpt: "A thrilling overtime victory secures our spot in the regional championship game this weekend. Get your tickets now!",
+    author: "Athletics Dept",
+    authorAvatar: "https://picsum.photos/seed/athletics/100/100",
+    isFollowedAuthor: true
   },
   {
     id: 4,
@@ -41,7 +50,10 @@ const NEWS_ITEMS = [
     date: "Mar 30, 2026",
     readTime: "4 min read",
     image: "https://picsum.photos/seed/lecture/600/400",
-    excerpt: "Dr. Sarah Jenkins will be speaking at the main auditorium this Friday at 4 PM. Open to all students and faculty."
+    excerpt: "Dr. Sarah Jenkins will be speaking at the main auditorium this Friday at 4 PM. Open to all students and faculty.",
+    author: "Computer Science Dept",
+    authorAvatar: "https://picsum.photos/seed/csdept/100/100",
+    isFollowedAuthor: false
   },
   {
     id: 5,
@@ -50,20 +62,25 @@ const NEWS_ITEMS = [
     date: "Mar 27, 2026",
     readTime: "3 min read",
     image: "https://picsum.photos/seed/nature/600/400",
-    excerpt: "Thanks to student efforts, we have reduced campus plastic waste by 40% this semester, hitting our sustainability target early."
+    excerpt: "Thanks to student efforts, we have reduced campus plastic waste by 40% this semester, hitting our sustainability target early.",
+    author: "Student Council",
+    authorAvatar: "https://picsum.photos/seed/council/100/100",
+    isFollowedAuthor: true
   }
 ];
 
-const CATEGORIES = ["All", "Campus", "Academic", "Sports", "Events"];
+const CATEGORIES = ["All", "Following", "Campus", "Academic", "Sports", "Events"];
 
 export default function NewsTab() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [selectedArticle, setSelectedArticle] = useState<typeof NEWS_ITEMS[0] | null>(null);
   const dragScroll = useDraggableScroll<HTMLDivElement>();
 
-  const filteredNews = NEWS_ITEMS.filter(
-    item => activeCategory === "All" || item.category === activeCategory
-  );
+  const filteredNews = NEWS_ITEMS.filter(item => {
+    if (activeCategory === "All") return true;
+    if (activeCategory === "Following") return item.isFollowedAuthor;
+    return item.category === activeCategory;
+  });
 
   const featuredPost = filteredNews.find(item => item.featured) || filteredNews[0];
   const regularPosts = filteredNews.filter(item => item.id !== featuredPost?.id);
@@ -72,7 +89,7 @@ export default function NewsTab() {
     <motion.div 
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
-      className="flex-1 h-full overflow-y-auto bg-neutral-950 relative"
+      className="flex-1 h-full overflow-y-auto custom-scrollbar bg-neutral-950 relative"
     >
       {/* Background Glows */}
       <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none fixed">
@@ -91,24 +108,33 @@ export default function NewsTab() {
         </div>
 
         {/* Category Filter */}
-        <div 
-          {...dragScroll}
-          className="flex gap-2 overflow-x-auto pb-4 mb-6 scrollbar-hide select-none"
-        >
-          {CATEGORIES.map((category) => (
-            <button
-              key={category}
-              onClick={() => setActiveCategory(category)}
-              className={clsx(
-                "px-5 py-2 rounded-full text-sm font-bold whitespace-nowrap transition-all duration-300",
-                activeCategory === category
-                  ? "bg-primary-500 text-white shadow-lg shadow-primary-500/25"
-                  : "bg-neutral-900 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800 border border-neutral-800"
-              )}
-            >
-              {category}
-            </button>
-          ))}
+        <div className="bg-neutral-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl mb-6 inline-flex max-w-full">
+          <div 
+            {...dragScroll}
+            className="flex gap-1 overflow-x-auto scrollbar-hide select-none"
+          >
+            {CATEGORIES.map((category) => (
+              <button
+                key={category}
+                onClick={() => setActiveCategory(category)}
+                className={clsx(
+                  "relative px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-colors duration-300",
+                  activeCategory === category
+                    ? "text-white"
+                    : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                )}
+              >
+                {activeCategory === category && (
+                  <motion.div
+                    layoutId="news-category"
+                    className="absolute inset-0 bg-primary-500 rounded-xl shadow-lg shadow-primary-500/25"
+                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                  />
+                )}
+                <span className="relative z-10">{category}</span>
+              </button>
+            ))}
+          </div>
         </div>
 
         {/* Featured Post */}
