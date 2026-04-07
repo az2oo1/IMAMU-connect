@@ -65,13 +65,13 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
                 )}
                 
                 <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1">Username</label>
+                  <label className="block text-sm font-medium text-neutral-300 mb-1">Username or Email</label>
                   <input
                     type="text"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
                     className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
-                    placeholder="Choose a username"
+                    placeholder="Enter your username or email"
                     required
                   />
                 </div>

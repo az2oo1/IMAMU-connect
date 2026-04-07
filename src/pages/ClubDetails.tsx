@@ -80,7 +80,7 @@ export default function ClubDetails() {
             >
               {isFollowing ? 'Following' : 'Follow'}
             </button>
-            <button className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-8 py-3 rounded-xl font-bold transition-colors shadow-lg shadow-primary-500/25">
+            <button className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-8 py-3 rounded-xl font-bold transition-all">
               Apply to Join
             </button>
           </div>
@@ -106,7 +106,7 @@ export default function ClubDetails() {
             >
               {isFollowing ? 'Following' : 'Follow'}
             </button>
-            <button className="flex-1 flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-3.5 rounded-xl font-bold transition-colors shadow-lg shadow-primary-500/25">
+            <button className="flex-1 flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-3.5 rounded-xl font-bold transition-all">
               Apply
             </button>
           </div>
@@ -126,19 +126,19 @@ export default function ClubDetails() {
               <h3 className="text-xl font-bold text-white mb-4">Connect</h3>
               <div className="flex flex-col gap-3">
                 {club.socials.twitter && (
-                  <a href="#" className="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10">
+                  <a href={`https://twitter.com/${club.socials.twitter.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10">
                     <Twitter className="w-5 h-5 text-[#1DA1F2]" />
                     <span className="font-medium">{club.socials.twitter}</span>
                   </a>
                 )}
                 {club.socials.instagram && (
-                  <a href="#" className="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10">
+                  <a href={`https://instagram.com/${club.socials.instagram.replace('@', '')}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10">
                     <Instagram className="w-5 h-5 text-[#E1306C]" />
                     <span className="font-medium">{club.socials.instagram}</span>
                   </a>
                 )}
                 {club.socials.linkedin && (
-                  <a href="#" className="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10">
+                  <a href={`https://linkedin.com/company/${club.socials.linkedin.replace(/\s+/g, '-').toLowerCase()}`} target="_blank" rel="noopener noreferrer" className="flex items-center gap-3 text-neutral-400 hover:text-white transition-colors p-3 rounded-xl hover:bg-white/5 border border-transparent hover:border-white/10">
                     <Linkedin className="w-5 h-5 text-[#0A66C2]" />
                     <span className="font-medium">{club.socials.linkedin}</span>
                   </a>

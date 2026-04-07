@@ -24,11 +24,15 @@ export default function VerificationGuard({ children }: { children: React.ReactN
     setStep('code');
   };
 
-  const handleVerify = (e: React.FormEvent) => {
+  const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
-    const success = verifyStudent(email, code);
-    if (!success) {
-      setError('Invalid verification code. Try 1234.');
+    try {
+      const success = await verifyStudent(email, code);
+      if (!success) {
+        setError('Invalid verification code. Try 1234.');
+      }
+    } catch (err) {
+      setError('Failed to verify student email.');
     }
   };
 

@@ -20,6 +20,7 @@ export default function FormattedText({ text, className = '' }: FormattedTextPro
           return (
             <ProfilePopover
               key={index}
+              username={handle}
               user={{
                 name: handle.charAt(0).toUpperCase() + handle.slice(1),
                 handle: handle,

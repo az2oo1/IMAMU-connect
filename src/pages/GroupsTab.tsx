@@ -277,7 +277,8 @@ export default function GroupsTab() {
             <div 
               ref={messagesContainerRef}
               onScroll={handleScroll}
-              className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 relative"
+              className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 space-y-6 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-repeat"
+              style={{ backgroundBlendMode: 'overlay', backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
             >
               <div className="text-center">
                 <div className="inline-block bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs px-3 py-1 rounded-full">
@@ -299,6 +300,7 @@ export default function GroupsTab() {
                     <div className={clsx("flex items-end gap-2 max-w-[80%]", msg.isMe ? "flex-row-reverse" : "flex-row")}>
                       {!msg.isMe && (
                         <ProfilePopover
+                          username={msg.sender.toLowerCase()}
                           user={{
                             name: msg.sender,
                             handle: msg.sender.toLowerCase(),
@@ -334,36 +336,39 @@ export default function GroupsTab() {
                             <AnimatePresence>
                               {activeMessageOptions === msg.id && (
                                 <motion.div 
-                                  initial={{ opacity: 0, scale: 0.95 }}
-                                  animate={{ opacity: 1, scale: 1 }}
-                                  exit={{ opacity: 0, scale: 0.95 }}
+                                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                  transition={{ duration: 0.15 }}
                                   className={clsx(
-                                    "absolute top-full mt-1 w-48 bg-neutral-800 border border-neutral-700 rounded-xl shadow-2xl overflow-hidden z-50",
+                                    "absolute top-full mt-2 w-48 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden z-50",
                                     msg.isMe ? "right-0" : "left-0"
                                   )}
                                 >
-                                  <button 
-                                    onClick={() => { setReplyingTo(msg); setActiveMessageOptions(null); }}
-                                    className="w-full text-left px-4 py-2 hover:bg-neutral-700 text-neutral-200 text-sm transition-colors flex items-center gap-2"
-                                  >
-                                    <Reply className="w-4 h-4" /> Reply
-                                  </button>
-                                  {msg.isMe && !isDeleted && (
-                                    <>
-                                      <button 
-                                        onClick={() => handleDeleteForMe(msg.id)}
-                                        className="w-full text-left px-4 py-2 hover:bg-neutral-700 text-neutral-200 text-sm transition-colors flex items-center gap-2"
-                                      >
-                                        <Trash2 className="w-4 h-4" /> Delete for me
-                                      </button>
-                                      <button 
-                                        onClick={() => handleDeleteForAll(msg.id)}
-                                        className="w-full text-left px-4 py-2 hover:bg-red-500/20 text-red-400 text-sm transition-colors flex items-center gap-2"
-                                      >
-                                        <Trash2 className="w-4 h-4" /> Delete for everyone
-                                      </button>
-                                    </>
-                                  )}
+                                  <div className="p-1">
+                                    <button 
+                                      onClick={() => { setReplyingTo(msg); setActiveMessageOptions(null); }}
+                                      className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
+                                    >
+                                      <Reply className="w-4 h-4" /> Reply
+                                    </button>
+                                    {msg.isMe && !isDeleted && (
+                                      <>
+                                        <button 
+                                          onClick={() => handleDeleteForMe(msg.id)}
+                                          className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
+                                        >
+                                          <Trash2 className="w-4 h-4" /> Delete for me
+                                        </button>
+                                        <button 
+                                          onClick={() => handleDeleteForAll(msg.id)}
+                                          className="w-full text-left px-3 py-2 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-sm rounded-lg transition-colors flex items-center gap-3 mt-1"
+                                        >
+                                          <Trash2 className="w-4 h-4" /> Delete for everyone
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
                                 </motion.div>
                               )}
                             </AnimatePresence>
@@ -373,9 +378,9 @@ export default function GroupsTab() {
                         <div className={clsx(
                           "px-4 py-2.5 rounded-2xl text-sm shadow-sm min-w-0 break-words whitespace-pre-wrap relative",
                           msg.isMe 
-                            ? "bg-primary-600 text-white rounded-br-sm" 
-                            : "bg-neutral-900 border border-neutral-800 text-neutral-200 rounded-bl-sm",
-                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800"
+                            ? "bg-primary-600 text-white rounded-br-sm shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
+                            : "bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 text-neutral-200 rounded-bl-sm shadow-[0_2px_10px_rgba(0,0,0,0.2)]",
+                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800 shadow-none"
                         )}>
                           {!msg.isMe && !isDeleted && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{msg.sender}</div>}
                           
@@ -529,7 +534,7 @@ export default function GroupsTab() {
 
                 <form 
                   onSubmit={handleSendMessage}
-                  className="flex items-end gap-2 bg-neutral-950 border border-neutral-800 rounded-3xl pl-2 pr-1 py-1 focus-within:border-primary-500 transition-colors"
+                  className="flex items-end gap-2 bg-neutral-900 border border-neutral-700/50 rounded-3xl pl-2 pr-1 py-1 focus-within:border-primary-500/50 focus-within:bg-neutral-800 transition-all shadow-lg"
                 >
                   <input 
                     type="file" 
@@ -668,6 +673,7 @@ export default function GroupsTab() {
                     <div key={member.id} className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
                         <ProfilePopover
+                          username={member.name === 'Me' ? 'me' : member.name.toLowerCase().replace(/\s+/g, '')}
                           user={{
                             name: member.name,
                             handle: member.name.toLowerCase().replace(/\s+/g, ''),

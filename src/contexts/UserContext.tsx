@@ -1,15 +1,20 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
+interface UserLink {
+  id: string;
+  url: string;
+}
+
 interface User {
   id: string;
   username: string;
   name: string | null;
   studentEmail?: string | null;
+  googleEmail?: string | null;
   bio?: string | null;
   avatarUrl?: string | null;
   bannerUrl?: string | null;
-  linkedinUrl?: string | null;
-  githubUrl?: string | null;
+  links?: UserLink[];
   createdAt?: string;
 }
 
@@ -19,9 +24,10 @@ interface UserContextType {
   login: (username: string, pass: string) => Promise<void>;
   register: (username: string, pass: string, email?: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: { name?: string; bio?: string; avatarUrl?: string; bannerUrl?: string; linkedinUrl?: string; githubUrl?: string }) => Promise<void>;
+  updateProfile: (data: { name?: string; bio?: string; links?: string[]; studentEmail?: string; googleEmail?: string }) => Promise<void>;
+  uploadImage: (file: File, type: 'avatar' | 'banner') => Promise<void>;
   isVerified: boolean;
-  verifyStudent: (email: string, code: string) => boolean;
+  verifyStudent: (email: string, code: string) => Promise<boolean>;
   isPrivateProfile: boolean;
   setIsPrivateProfile: (val: boolean) => void;
   isAuthReady: boolean;
@@ -48,6 +54,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
             const data = await res.json();
             setUser(data.user);
             setIsAuthenticated(true);
+            if (data.user.studentEmail) {
+              setIsVerified(true);
+            }
           } else {
             localStorage.removeItem('token');
           }
@@ -76,6 +85,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', data.token);
     setUser(data.user);
     setIsAuthenticated(true);
+    if (data.user.studentEmail) {
+      setIsVerified(true);
+    }
+    return data.user;
   };
 
   const register = async (username: string, pass: string, email?: string) => {
@@ -94,6 +107,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('token', data.token);
     setUser(data.user);
     setIsAuthenticated(true);
+    if (data.user.studentEmail) {
+      setIsVerified(true);
+    }
   };
 
   const logout = () => {
@@ -103,7 +119,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setIsVerified(false);
   };
 
-  const updateProfile = async (data: { name?: string; bio?: string; avatarUrl?: string; bannerUrl?: string; linkedinUrl?: string; githubUrl?: string }) => {
+  const updateProfile = async (data: { name?: string; bio?: string; links?: string[]; studentEmail?: string; googleEmail?: string }) => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Not authenticated');
 
@@ -123,10 +139,38 @@ export function UserProvider({ children }: { children: ReactNode }) {
     
     const resData = await res.json();
     setUser(resData.user);
+    if (resData.user.studentEmail) {
+      setIsVerified(true);
+    }
   };
 
-  const verifyStudent = (email: string, code: string) => {
+  const uploadImage = async (file: File, type: 'avatar' | 'banner') => {
+    const token = localStorage.getItem('token');
+    if (!token) throw new Error('Not authenticated');
+
+    const formData = new FormData();
+    formData.append(type, file);
+
+    const res = await fetch('/api/auth/upload', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`
+      },
+      body: formData
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      throw new Error(errData.error || 'Failed to upload image');
+    }
+
+    const resData = await res.json();
+    setUser(resData.user);
+  };
+
+  const verifyStudent = async (email: string, code: string) => {
     if (email.endsWith('@sm.imamu.edu.sa') && code === '1234') {
+      await updateProfile({ studentEmail: email });
       setIsVerified(true);
       return true;
     }
@@ -134,7 +178,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <UserContext.Provider value={{ isAuthenticated, user, login, register, logout, updateProfile, isVerified, verifyStudent, isPrivateProfile, setIsPrivateProfile, isAuthReady }}>
+    <UserContext.Provider value={{ isAuthenticated, user, login, register, logout, updateProfile, uploadImage, isVerified, verifyStudent, isPrivateProfile, setIsPrivateProfile, isAuthReady }}>
       {children}
     </UserContext.Provider>
   );

@@ -13,20 +13,60 @@ model User {
   passwordHash  String?
   studentEmail  String?   @unique
   googleId      String?   @unique
+  googleEmail   String?   @unique
   name          String?
   avatarUrl     String?
   bannerUrl     String?
   bio           String?
-  linkedinUrl   String?
-  githubUrl     String?
   
+  role          String    @default("USER") // USER, ADMIN, NEWS_WRITER
+  isBanned      Boolean   @default(false)
+
+  links         UserLink[]
   articles      NewsArticle[]
   messages      Message[]
   
   adminOfGroups Group[]   @relation("GroupAdmins")
   memberOfGroups Group[]  @relation("GroupMembers")
 
+  // New relations from user schema
+  posts            Post[]
+  comments         Comment[]
+  enrollments      Enrollment[]
+  clubMemberships  ClubMember[]
+  aiChats          AiInteraction[]
+  notifications    Notification[]
+
   createdAt     DateTime  @default(now())
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // MENTION, REPORT_ANSWER, SYSTEM
+  content   String
+  link      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Report {
+  id          String   @id @default(uuid())
+  reporterId  String
+  reportedId  String?
+  type        String   // MESSAGE, NEWS, FILE, USER, CLUB
+  contentId   String?
+  reason      String
+  status      String   @default("PENDING") // PENDING, RESOLVED, DISMISSED
+  createdAt   DateTime @default(now())
+}
+
+model UserLink {
+  id        String   @id @default(uuid())
+  url       String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model NewsArticle {
@@ -50,6 +90,7 @@ model Course {
   
   files       AcademicFile[]
   groups      Group[]
+  enrollments Enrollment[]
 }
 
 model AcademicFile {
@@ -88,4 +129,85 @@ model Message {
   author      User     @relation(fields: [authorId], references: [id])
   
   createdAt   DateTime @default(now())
+}
+
+// ------------------------------------------------------
+// 2. Community Feed & Posts
+// ------------------------------------------------------
+model Post {
+  id        String   @id @default(uuid())
+  authorId  String
+  content   String
+  mediaUrl  String?
+  postType  String   @default("GENERAL") // GENERAL, QUESTION, ANNOUNCEMENT, MATERIAL
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments  Comment[]
+}
+
+model Comment {
+  id        String   @id @default(uuid())
+  postId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+}
+
+// ------------------------------------------------------
+// 3. Academic Integration (Courses)
+// ------------------------------------------------------
+model Enrollment {
+  id        String   @id @default(uuid())
+  userId    String
+  courseId  String
+  semester  String   // e.g., "Fall 2026"
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId, semester])
+}
+
+// ------------------------------------------------------
+// 4. Clubs & Activities
+// ------------------------------------------------------
+model Club {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String
+  createdAt   DateTime @default(now())
+
+  members     ClubMember[]
+}
+
+model ClubMember {
+  id       String   @id @default(uuid())
+  userId   String
+  clubId   String
+  joinedAt DateTime @default(now())
+  isAdmin  Boolean  @default(false)
+
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, clubId])
+}
+
+// ------------------------------------------------------
+// 6. AI Features (Gemini API Tracking)
+// ------------------------------------------------------
+model AiInteraction {
+  id           String   @id @default(uuid())
+  userId       String
+  prompt       String
+  aiResponse   String
+  createdAt    DateTime @default(now())
+
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

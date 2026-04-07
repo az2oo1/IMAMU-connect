@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Calendar, Linkedin, Github, Compass, ArrowLeft } from 'lucide-react';
+import { Calendar, Compass, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useUser } from '../contexts/UserContext';
+import { getIconForUrl, getPlatformName } from '../utils/linkHelpers';
 
 interface PublicUser {
   id: string;
@@ -11,8 +12,7 @@ interface PublicUser {
   bio: string | null;
   avatarUrl: string | null;
   bannerUrl: string | null;
-  linkedinUrl: string | null;
-  githubUrl: string | null;
+  links: { id: string; url: string }[];
   createdAt: string;
 }
 
@@ -78,11 +78,11 @@ export default function PublicProfile() {
       </button>
 
       {/* Cover Photo */}
-      <div className="h-48 md:h-64 bg-gradient-to-r from-primary-900 to-primary-800 relative group">
+      <div className="h-48 md:h-64 bg-neutral-900 relative group overflow-hidden">
         <img 
           src={profile.bannerUrl || `https://picsum.photos/seed/${profile.id}_banner/1200/400`} 
           alt="Cover" 
-          className="w-full h-full object-cover opacity-50 mix-blend-overlay"
+          className="w-full h-full object-cover"
           referrerPolicy="no-referrer"
         />
       </div>
@@ -111,16 +111,11 @@ export default function PublicProfile() {
           </div>
 
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-500">
-            {profile.linkedinUrl && (
-              <a href={profile.linkedinUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-primary-400 transition-colors">
-                <Linkedin className="w-4 h-4" /> LinkedIn
+            {profile.links?.map((link: any) => (
+              <a key={link.id} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-primary-400 transition-colors">
+                {getIconForUrl(link.url)} {getPlatformName(link.url)}
               </a>
-            )}
-            {profile.githubUrl && (
-              <a href={profile.githubUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-primary-400 transition-colors">
-                <Github className="w-4 h-4" /> GitHub
-              </a>
-            )}
+            ))}
             {profile.createdAt && (
               <div className="flex items-center gap-1.5">
                 <Calendar className="w-4 h-4" /> Joined {new Date(profile.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}

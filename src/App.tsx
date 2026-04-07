@@ -17,7 +17,16 @@ import PersonalTab from './pages/PersonalTab';
 import PublicProfile from './pages/PublicProfile';
 import GroupsTab from './pages/GroupsTab';
 import CalendarTab from './pages/CalendarTab';
+import SettingsTab from './pages/SettingsTab';
+import SavedTab from './pages/SavedTab';
+import NotificationsTab from './pages/NotificationsTab';
 import VerificationGuard from './components/VerificationGuard';
+import AdminLayout from './pages/admin/AdminLayout';
+import AdminLogin from './pages/admin/AdminLogin';
+import AdminUsersTab from './pages/admin/UsersTab';
+import AdminClubsTab from './pages/admin/ClubsTab';
+import AdminNewsTab from './pages/admin/NewsTab';
+import AdminReportsTab from './pages/admin/ReportsTab';
 
 export default function App() {
   return (
@@ -25,6 +34,17 @@ export default function App() {
       <UserProvider>
         <Router>
           <Routes>
+            {/* Admin Routes */}
+            <Route path="/admin/login" element={<AdminLogin />} />
+            <Route path="/admin" element={<AdminLayout />}>
+              <Route index element={<Navigate to="/admin/users" replace />} />
+              <Route path="users" element={<AdminUsersTab />} />
+              <Route path="clubs" element={<AdminClubsTab />} />
+              <Route path="news" element={<AdminNewsTab />} />
+              <Route path="reports" element={<AdminReportsTab />} />
+            </Route>
+
+            {/* Main App Routes */}
             <Route path="/" element={<Layout />}>
               <Route index element={<Navigate to="/news" replace />} />
               <Route path="news" element={<NewsTab />} />
@@ -40,6 +60,9 @@ export default function App() {
               <Route path="personal" element={<PersonalTab />} />
               <Route path="profile/:username" element={<PublicProfile />} />
               <Route path="calendar" element={<CalendarTab />} />
+              <Route path="settings" element={<SettingsTab />} />
+              <Route path="saved" element={<SavedTab />} />
+              <Route path="notifications" element={<NotificationsTab />} />
               <Route path="groups" element={
                 <VerificationGuard>
                   <GroupsTab />

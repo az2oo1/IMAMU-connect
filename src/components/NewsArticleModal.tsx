@@ -105,6 +105,7 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
                 {/* Author & Actions Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-4 py-6 border-y border-neutral-800/60 mb-8">
                   <ProfilePopover
+                    username={(article.author || 'University Press').toLowerCase().replace(/\s+/g, '')}
                     user={{
                       name: article.author || 'University Press',
                       handle: (article.author || 'University Press').toLowerCase().replace(/\s+/g, ''),

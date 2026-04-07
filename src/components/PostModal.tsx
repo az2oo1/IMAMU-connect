@@ -81,6 +81,7 @@ export default function PostModal({ post, isOpen, onClose }: PostModalProps) {
               <div className="p-6 border-b border-neutral-800 flex items-center justify-between shrink-0">
                 <div className="flex items-center gap-3">
                   <ProfilePopover 
+                    username={post.handle}
                     user={{
                       name: post.author,
                       handle: post.handle,

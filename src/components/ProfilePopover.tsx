@@ -7,7 +7,8 @@ import { useNavigate } from 'react-router-dom';
 interface ProfilePopoverProps {
   children: React.ReactNode;
   key?: React.Key;
-  user: {
+  username?: string;
+  user?: {
     name: string;
     handle: string;
     avatar: string;
@@ -17,15 +18,37 @@ interface ProfilePopoverProps {
   };
 }
 
-export default function ProfilePopover({ children, user }: ProfilePopoverProps) {
+export default function ProfilePopover({ children, username, user: initialUser }: ProfilePopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [isFollowing, setIsFollowing] = useState(user.isFollowing || false);
+  const [fetchedUser, setFetchedUser] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+  const [isFollowing, setIsFollowing] = useState(initialUser?.isFollowing || false);
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
-  const [hPosition, setHPosition] = useState<'left' | 'right'>('left');
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
+  const displayUser = fetchedUser ? {
+    name: fetchedUser.name || fetchedUser.username,
+    handle: fetchedUser.username,
+    avatar: fetchedUser.avatarUrl || `https://picsum.photos/seed/${fetchedUser.id}/150/150`,
+    banner: fetchedUser.bannerUrl || `https://picsum.photos/seed/${fetchedUser.id}_banner/400/200`,
+    bio: fetchedUser.bio || 'No bio added yet.',
+  } : initialUser;
+
+  useEffect(() => {
+    if (isOpen && username && !fetchedUser && !loading) {
+      setLoading(true);
+      fetch(`/api/users/${username}`)
+        .then(res => res.json())
+        .then(data => {
+          if (data.user) setFetchedUser(data.user);
+        })
+        .catch(console.error)
+        .finally(() => setLoading(false));
+    }
+  }, [isOpen, username, fetchedUser, loading]);
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -42,7 +65,7 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
     }
 
     document.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("scroll", handleScroll, true); // Use capture phase to catch all scrolls
+    window.addEventListener("scroll", handleScroll, true);
     
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
@@ -55,32 +78,33 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
       const rect = triggerRef.current.getBoundingClientRect();
       const spaceBelow = window.innerHeight - rect.bottom;
       const spaceAbove = rect.top;
-      const spaceRight = window.innerWidth - rect.left;
       
       let newPos: 'bottom' | 'top' = 'bottom';
-      let newHPos: 'left' | 'right' = 'left';
 
-      // Vertical positioning
       if (spaceBelow < 300 && spaceAbove > spaceBelow) {
         newPos = 'top';
       } else {
         newPos = 'bottom';
       }
 
-      // Horizontal positioning (popover is w-72 which is 288px)
-      if (spaceRight < 300) {
-        newHPos = 'right';
-      } else {
-        newHPos = 'left';
+      setPosition(newPos);
+      
+      // Calculate horizontal position to keep it on screen
+      const popoverWidth = 288; // w-72 = 18rem = 288px
+      let left = rect.left;
+      
+      // If it goes off the right edge, align it to the right edge of the screen with some padding
+      if (left + popoverWidth > window.innerWidth - 16) {
+        left = window.innerWidth - popoverWidth - 16;
+      }
+      // If it goes off the left edge (unlikely but possible), align to left edge
+      if (left < 16) {
+        left = 16;
       }
 
-      setPosition(newPos);
-      setHPosition(newHPos);
-      
-      // Calculate fixed coordinates
       setCoords({
         top: newPos === 'bottom' ? rect.bottom + 8 : rect.top - 8,
-        left: newHPos === 'left' ? rect.left : rect.right
+        left: left
       });
     }
   }, [isOpen]);
@@ -93,7 +117,7 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
 
       {createPortal(
         <AnimatePresence>
-          {isOpen && (
+          {isOpen && displayUser && (
             <motion.div
               ref={popoverRef}
               initial={{ opacity: 0, y: position === 'top' ? 10 : -10, scale: 0.95 }}
@@ -104,7 +128,7 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
                 position: 'fixed',
                 top: coords.top,
                 left: coords.left,
-                transform: `${position === 'top' ? 'translateY(-100%)' : ''} ${hPosition === 'right' ? 'translateX(-100%)' : ''}`,
+                transform: `${position === 'top' ? 'translateY(-100%)' : ''}`,
                 zIndex: 99999
               }}
               className="w-72 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
@@ -113,7 +137,7 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
             <div 
               className="h-20 bg-neutral-800 w-full"
               style={{
-                backgroundImage: `url(${user.banner || 'https://picsum.photos/seed/banner/400/200'})`,
+                backgroundImage: `url(${displayUser.banner || 'https://picsum.photos/seed/banner/400/200'})`,
                 backgroundSize: 'cover',
                 backgroundPosition: 'center'
               }}
@@ -123,8 +147,8 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
               {/* Profile Pic & Follow Button */}
               <div className="flex justify-between items-end -mt-8 mb-3">
                 <img 
-                  src={user.avatar} 
-                  alt={user.name} 
+                  src={displayUser.avatar} 
+                  alt={displayUser.name} 
                   className="w-16 h-16 rounded-full border-4 border-neutral-900 object-cover bg-neutral-800"
                   referrerPolicy="no-referrer"
                 />
@@ -145,10 +169,10 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
 
               {/* User Info */}
               <div>
-                <h4 className="font-bold text-white text-lg leading-tight">{user.name}</h4>
-                <p className="text-neutral-500 text-sm mb-3">@{user.handle}</p>
+                <h4 className="font-bold text-white text-lg leading-tight">{displayUser.name}</h4>
+                <p className="text-neutral-500 text-sm mb-3">@{displayUser.handle}</p>
                 <p className="text-neutral-300 text-sm mb-4 line-clamp-3">
-                  {user.bio}
+                  {loading ? 'Loading...' : displayUser.bio}
                 </p>
               </div>
 
@@ -157,7 +181,7 @@ export default function ProfilePopover({ children, user }: ProfilePopoverProps) 
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsOpen(false);
-                  navigate(`/profile/${user.handle}`);
+                  navigate(`/profile/${displayUser.handle}`);
                 }}
                 className="w-full flex items-center justify-center gap-2 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl transition-colors text-sm font-medium"
               >

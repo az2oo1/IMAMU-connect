@@ -305,6 +305,7 @@ export default function AcademicsTab() {
                     <div className="mt-4 pt-4 border-t border-neutral-800 flex items-center justify-between">
                       <div className="text-xs text-neutral-400 flex items-center gap-1.5">
                         <ProfilePopover
+                          username={file.uploader.toLowerCase().replace(/\s+/g, '')}
                           user={{
                             name: file.uploader,
                             handle: file.uploader.toLowerCase().replace(/\s+/g, ''),
