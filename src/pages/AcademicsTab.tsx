@@ -114,8 +114,7 @@ function SortableFileItem({ file, isAdmin, activeDropdown, setActiveDropdown, se
       className={clsx(
         "rounded-xl transition-all duration-500", 
         isAdmin && "cursor-grab active:cursor-grabbing", 
-        isDragging && "shadow-2xl ring-2 ring-primary-500/50",
-        file.isHighlighted && "ring-2 ring-primary-500 shadow-[0_0_20px_rgba(59,130,246,0.3)] bg-primary-500/5"
+        isDragging && "shadow-2xl ring-2 ring-primary-500/50"
       )}
       onClick={(e) => {
         if (!isDragging) setPreviewFile(file);
@@ -124,7 +123,7 @@ function SortableFileItem({ file, isAdmin, activeDropdown, setActiveDropdown, se
       <div 
         className={clsx(
           "bg-neutral-900 border rounded-xl p-4 transition-colors group flex flex-col cursor-pointer h-full",
-          file.isHighlighted ? "border-primary-500 bg-primary-500/5" : "border-neutral-800 hover:border-neutral-700"
+          "border-neutral-800 hover:border-neutral-700"
         )}
       >
         <div className="flex justify-between items-start mb-4">
@@ -261,7 +260,6 @@ export default function AcademicsTab() {
   const [searchParams, setSearchParams] = useSearchParams();
   const fileIdParam = searchParams.get('fileId');
   const [activeCourseId, setActiveCourseIdState] = useState(searchParams.get('courseId') || '');
-  const [highlightedFileId, setHighlightedFileId] = useState<string | null>(null);
   
   const parsedFolderId = searchParams.get('folderId');
   const [currentFolderId, setCurrentFolderIdState] = useState<string | null>(parsedFolderId === 'null' ? null : parsedFolderId);
@@ -334,13 +332,25 @@ export default function AcademicsTab() {
       .then(res => res.json())
       .then(data => {
         if (data.file) {
-          setActiveCourseId(data.file.courseId);
-          setCurrentFolderId(data.file.folderId || null);
-          setHighlightedFileId(data.file.id);
+          setActiveCourseIdState(data.file.courseId);
+          setCurrentFolderIdState(data.file.folderId || null);
           
+          setSearchParams(prev => {
+            const p = new URLSearchParams(prev);
+            if (data.file.courseId) p.set('courseId', data.file.courseId);
+            else p.delete('courseId');
+            
+            if (data.file.folderId) p.set('folderId', data.file.folderId);
+            else p.delete('folderId');
+            
+            return p;
+          }, { replace: true });
+
           setTimeout(() => {
             const el = document.getElementById(`file-${data.file.id}`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            if (el) {
+               el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }
           }, 500);
         }
       })
@@ -812,18 +822,19 @@ export default function AcademicsTab() {
   
   const approvedFiles = [...filteredCourseFiles]
     .filter(f => f.status === 'APPROVED')
-    .map(f => ({ ...f, isHighlighted: f.id === highlightedFileId }))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
   const pendingFiles = [...filteredCourseFiles]
     .filter(f => f.status === 'PENDING')
-    .map(f => ({ ...f, isHighlighted: f.id === highlightedFileId }))
     .sort((a, b) => (a.order || 0) - (b.order || 0));
 
   // Get breadcrumbs
   const getBreadcrumbs = () => {
     const crumbs = [];
     let curr = currentFolderId;
+    const seen = new Set();
     while (curr) {
+      if (seen.has(curr)) break;
+      seen.add(curr);
       const folder = courseFolders.find(f => f.id === curr);
       if (folder) {
         crumbs.unshift(folder);
@@ -926,9 +937,17 @@ export default function AcademicsTab() {
             <div key={course.id} className="relative group/course">
               <button
                 onClick={() => {
-                  setActiveCourseId(course.id);
-                  setCurrentFolderId(null);
+                  setActiveCourseIdState(course.id);
+                  setCurrentFolderIdState(null);
                   setSearch('');
+                  
+                  setSearchParams(prev => {
+                    const p = new URLSearchParams(prev);
+                    p.set('courseId', course.id);
+                    p.delete('folderId');
+                    p.delete('fileId');
+                    return p;
+                  }, { replace: true });
                 }}
                 className={clsx(
                   "w-full text-left p-3 rounded-lg hover:bg-neutral-800 transition-colors mb-1 flex items-center justify-between",
@@ -1085,7 +1104,7 @@ export default function AcademicsTab() {
                     id={`file-${file.id}`}
                     className={clsx(
                       "bg-neutral-900 border rounded-xl p-4 transition-colors group relative overflow-hidden",
-                      file.isHighlighted ? "border-primary-500 ring-2 ring-primary-500/50 shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]" : "border-yellow-500/30 hover:border-yellow-500/50"
+                      "border-yellow-500/30 hover:border-yellow-500/50"
                     )}
                   >
                     <div className="absolute top-0 left-0 w-1 h-full bg-yellow-500/50" />

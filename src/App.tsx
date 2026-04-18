@@ -87,6 +87,7 @@ export default function App() {
                     <MessagesTab />
                   </VerificationGuard>
                 } />
+                <Route path="*" element={<Navigate to="/news" replace />} />
               </Route>
             </Routes>
           </Router>

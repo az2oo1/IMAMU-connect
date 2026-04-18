@@ -241,7 +241,9 @@ export default function Layout() {
                               onClick={() => {
                                 setIsNotificationsOpen(false);
                                 if (notification.link) {
-                                  navigate(notification.link);
+                                  // Fix for legacy links
+                                  const fixedLink = notification.link.startsWith('/app/') ? notification.link.replace('/app/', '/') : notification.link;
+                                  navigate(fixedLink);
                                 }
                               }}
                               className="p-3 hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"

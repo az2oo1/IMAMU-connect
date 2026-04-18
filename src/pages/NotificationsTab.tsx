@@ -97,7 +97,8 @@ export default function NotificationsTab() {
                   key={notification.id} 
                   onClick={() => {
                     if (notification.link) {
-                      navigate(notification.link);
+                      const fixedLink = notification.link.startsWith('/app/') ? notification.link.replace('/app/', '/') : notification.link;
+                      navigate(fixedLink);
                     }
                   }}
                   className={`p-4 rounded-2xl border transition-all flex gap-4 items-start ${notification.link ? 'cursor-pointer hover:bg-neutral-800' : ''} ${
