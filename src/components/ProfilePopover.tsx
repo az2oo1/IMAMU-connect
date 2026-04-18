@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { UserPlus, User } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import OptimizedImage from './OptimizedImage';
 
 interface ProfilePopoverProps {
   children: React.ReactNode;
@@ -27,6 +28,7 @@ export default function ProfilePopover({ children, username, user: initialUser }
   const [coords, setCoords] = useState({ top: 0, left: 0 });
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
   const navigate = useNavigate();
 
   const displayUser = fetchedUser ? {
@@ -111,7 +113,21 @@ export default function ProfilePopover({ children, username, user: initialUser }
 
   return (
     <>
-      <span ref={triggerRef} onClick={() => setIsOpen(!isOpen)} className="cursor-pointer inline-block">
+      <span 
+        ref={triggerRef} 
+        onMouseEnter={() => {
+           if (timeoutRef.current) clearTimeout(timeoutRef.current);
+           setIsOpen(true);
+        }}
+        onMouseLeave={() => {
+           timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsOpen(!isOpen);
+        }} 
+        className="cursor-pointer inline-block"
+      >
         {children}
       </span>
 
@@ -120,6 +136,13 @@ export default function ProfilePopover({ children, username, user: initialUser }
           {isOpen && displayUser && (
             <motion.div
               ref={popoverRef}
+              onMouseEnter={() => {
+                 if (timeoutRef.current) clearTimeout(timeoutRef.current);
+                 setIsOpen(true);
+              }}
+              onMouseLeave={() => {
+                 timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+              }}
               initial={{ opacity: 0, y: position === 'top' ? 10 : -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: position === 'top' ? 10 : -10, scale: 0.95 }}
@@ -133,24 +156,22 @@ export default function ProfilePopover({ children, username, user: initialUser }
               }}
               className="w-72 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden"
             >
-            {/* Banner */}
-            <div 
-              className="h-20 bg-neutral-800 w-full"
-              style={{
-                backgroundImage: `url(${displayUser.banner || 'https://picsum.photos/seed/banner/400/200'})`,
-                backgroundSize: 'cover',
-                backgroundPosition: 'center'
-              }}
-            />
+              {/* Banner */}
+              <OptimizedImage 
+                src={displayUser.banner || 'https://picsum.photos/seed/banner/400/200'}
+                alt="Banner"
+                variant="banner"
+                className="h-20 w-full"
+              />
             
             <div className="px-4 pb-4">
               {/* Profile Pic & Follow Button */}
               <div className="flex justify-between items-end -mt-8 mb-3">
-                <img 
+                <OptimizedImage 
                   src={displayUser.avatar} 
                   alt={displayUser.name} 
+                  variant="medium"
                   className="w-16 h-16 rounded-full border-4 border-neutral-900 object-cover bg-neutral-800"
-                  referrerPolicy="no-referrer"
                 />
                 <button 
                   onClick={(e) => {

@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
+import OptimizedImage from '../components/OptimizedImage';
 import { Tent, Search, ArrowRight, Flag } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
@@ -112,13 +113,32 @@ const CATEGORIES = ["All", "Tech", "Academic", "Arts", "Sports", "Social"];
 export default function ClubsTab() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [searchQuery, setSearchQuery] = useState("");
+  const [clubs, setClubs] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const dragScroll = useDraggableScroll<HTMLDivElement>();
   const navigate = useNavigate();
 
-  const filteredClubs = CLUBS_DATA.filter(club => {
-    const matchesCategory = activeCategory === "All" || club.category === activeCategory;
+  useEffect(() => {
+    const fetchClubs = async () => {
+      try {
+        const res = await fetch('/api/clubs');
+        if (res.ok) {
+          const data = await res.json();
+          setClubs(data.clubs);
+        }
+      } catch (error) {
+        console.error('Failed to fetch clubs', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    fetchClubs();
+  }, []);
+
+  const filteredClubs = clubs.filter(club => {
+    const matchesCategory = activeCategory === "All" || (club.tags && club.tags.includes(activeCategory));
     const matchesSearch = club.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          club.bio.toLowerCase().includes(searchQuery.toLowerCase());
+                          (club.description && club.description.toLowerCase().includes(searchQuery.toLowerCase()));
     return matchesCategory && matchesSearch;
   });
 
@@ -201,11 +221,24 @@ export default function ClubsTab() {
             >
               <div className="flex justify-between items-start mb-4">
                 <div className="w-16 h-16 rounded-2xl overflow-hidden border border-neutral-800 bg-neutral-800 shrink-0 shadow-xl">
-                  <img src={club.logo} alt={`${club.name} logo`} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {club.avatarUrl ? (
+                    <OptimizedImage 
+                      src={club.avatarUrl} 
+                      alt={`${club.name} logo`} 
+                      variant="medium"
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-neutral-500 font-bold text-xl">
+                      {club.name.charAt(0)}
+                    </div>
+                  )}
                 </div>
-                <span className="px-3 py-1 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold tracking-wider uppercase backdrop-blur-md">
-                  {club.category}
-                </span>
+                {club.tags && (
+                  <span className="px-3 py-1 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold tracking-wider uppercase backdrop-blur-md">
+                    {club.tags.split(',')[0]}
+                  </span>
+                )}
               </div>
               
               <div className="flex flex-col flex-1 relative">
@@ -213,11 +246,11 @@ export default function ClubsTab() {
                   {club.name}
                 </h3>
                 <p className="text-neutral-400 text-sm line-clamp-3 mb-4 flex-1">
-                  {club.bio}
+                  {club.description}
                 </p>
                 <div className="flex items-center justify-between mt-auto pt-4 border-t border-white/5">
                   <span className="text-neutral-500 text-sm font-medium flex items-center gap-1.5">
-                    <Tent className="w-4 h-4" /> {club.members} Members
+                    <Tent className="w-4 h-4" /> {club._count?.members || 0} Members
                   </span>
                   <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center group-hover:bg-primary-500 group-hover:text-white text-neutral-400 transition-colors">
                     <ArrowRight className="w-4 h-4" />

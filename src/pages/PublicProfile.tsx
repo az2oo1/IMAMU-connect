@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Calendar, Compass, ArrowLeft } from 'lucide-react';
 import { motion } from 'motion/react';
+import OptimizedImage from '../components/OptimizedImage';
 import { useUser } from '../contexts/UserContext';
 import { getIconForUrl, getPlatformName } from '../utils/linkHelpers';
 
@@ -79,11 +80,11 @@ export default function PublicProfile() {
 
       {/* Cover Photo */}
       <div className="h-48 md:h-64 bg-neutral-900 relative group overflow-hidden">
-        <img 
+        <OptimizedImage 
           src={profile.bannerUrl || `https://picsum.photos/seed/${profile.id}_banner/1200/400`} 
           alt="Cover" 
+          variant="banner"
           className="w-full h-full object-cover"
-          referrerPolicy="no-referrer"
         />
       </div>
 
@@ -92,11 +93,11 @@ export default function PublicProfile() {
         <div className="bg-neutral-900/80 backdrop-blur-xl border border-neutral-800 rounded-3xl p-6 shadow-xl mb-6">
           <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-end">
             <div className="relative">
-              <img 
+              <OptimizedImage 
                 src={profile.avatarUrl || `https://picsum.photos/seed/${profile.id}/150/150`} 
                 alt="Profile" 
+                variant="large"
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border-4 border-neutral-900 object-cover bg-neutral-800 shadow-lg"
-                referrerPolicy="no-referrer"
               />
             </div>
             

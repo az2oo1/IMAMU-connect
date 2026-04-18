@@ -21,10 +21,14 @@ model User {
   
   role          String    @default("USER") // USER, ADMIN, NEWS_WRITER
   isBanned      Boolean   @default(false)
+  isSuspended   Boolean   @default(false)
+  suspensionExpires DateTime?
 
   links         UserLink[]
   articles      NewsArticle[]
   messages      Message[]
+  deletedMessages Message[] @relation("MessageDeletedBy")
+  logs          Log[]
   
   adminOfGroups Group[]   @relation("GroupAdmins")
   memberOfGroups Group[]  @relation("GroupMembers")
@@ -36,6 +40,10 @@ model User {
   clubMemberships  ClubMember[]
   aiChats          AiInteraction[]
   notifications    Notification[]
+  uploadedFiles    AcademicFile[] @relation("FileUploader")
+  approvedFiles    AcademicFile[] @relation("FileApprover")
+  filedReports     Report[]       @relation("UserFiledReports")
+  adminNotesWritten Report[]      @relation("ReportAdminNoteAuthor")
 
   createdAt     DateTime  @default(now())
 }
@@ -54,11 +62,17 @@ model Notification {
 model Report {
   id          String   @id @default(uuid())
   reporterId  String
+  reporter    User     @relation("UserFiledReports", fields: [reporterId], references: [id])
   reportedId  String?
   type        String   // MESSAGE, NEWS, FILE, USER, CLUB
   contentId   String?
   reason      String
   status      String   @default("PENDING") // PENDING, RESOLVED, DISMISSED
+  adminNote   String?
+  adminNoteAuthorId String?
+  adminNoteAuthor User? @relation("ReportAdminNoteAuthor", fields: [adminNoteAuthorId], references: [id])
+  resolutionMessage String? // New: Message shown to the reporter
+  resolvedAt  DateTime?
   createdAt   DateTime @default(now())
 }
 
@@ -80,6 +94,9 @@ model NewsArticle {
   authorId    String
   author      User     @relation(fields: [authorId], references: [id])
   
+  clubId      String?
+  club        Club?    @relation(fields: [clubId], references: [id])
+  
   createdAt   DateTime @default(now())
 }
 
@@ -87,10 +104,28 @@ model Course {
   id          String   @id @default(uuid())
   name        String
   code        String   @unique
+  description String?
+  avatarUrl   String?
+  bannerUrl   String?
+  tags        String?
   
   files       AcademicFile[]
+  folders     Folder[]
   groups      Group[]
   enrollments Enrollment[]
+}
+
+model Folder {
+  id          String   @id @default(uuid())
+  name        String
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children    Folder[] @relation("FolderToFolder")
+  files       AcademicFile[]
+  createdAt   DateTime @default(now())
+  order       Int      @default(0)
 }
 
 model AcademicFile {
@@ -98,17 +133,29 @@ model AcademicFile {
   name        String
   url         String
   courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  folderId    String?
+  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: Cascade)
+  status      String   @default("APPROVED") // APPROVED, PENDING, REJECTED
+  isAnonymous Boolean  @default(true)
+  uploaderId  String?
+  uploader    User?    @relation("FileUploader", fields: [uploaderId], references: [id])
+  approverId  String?
+  approver    User?    @relation("FileApprover", fields: [approverId], references: [id])
   createdAt   DateTime @default(now())
+  order       Int      @default(0)
 }
 
 model Group {
   id          String   @id @default(uuid())
   name        String
   bio         String?
+  tags        String?
+  avatarUrl   String?
+  isDirectMessage Boolean @default(false)
   
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id])
+  courseId    String?
+  course      Course?   @relation(fields: [courseId], references: [id])
   
   admins      User[]   @relation("GroupAdmins")
   members     User[]   @relation("GroupMembers")
@@ -128,6 +175,27 @@ model Message {
   authorId    String
   author      User     @relation(fields: [authorId], references: [id])
   
+  replyToId   String?
+  replyTo     Message? @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies     Message[] @relation("MessageReplies")
+
+  attachmentUrl  String?
+  attachmentName String?
+  attachmentSize Int?
+  attachmentType String?
+
+  deletedForAll Boolean @default(false)
+  deletedBy   User[]   @relation("MessageDeletedBy")
+
+  createdAt   DateTime @default(now())
+}
+
+model Log {
+  id          String   @id @default(uuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action      String
+  details     String?
   createdAt   DateTime @default(now())
 }
 
@@ -166,6 +234,7 @@ model Enrollment {
   userId    String
   courseId  String
   semester  String   // e.g., "Fall 2026"
+  isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
 
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -181,9 +250,21 @@ model Club {
   id          String   @id @default(uuid())
   name        String   @unique
   description String
+  avatarUrl   String?
+  bannerUrl   String?
+  tags        String?
   createdAt   DateTime @default(now())
 
   members     ClubMember[]
+  links       ClubLink[]
+  articles    NewsArticle[]
+}
+
+model ClubLink {
+  id        String   @id @default(uuid())
+  url       String
+  clubId    String
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model ClubMember {

@@ -4,6 +4,7 @@ import { Calendar, Clock, ChevronRight, Newspaper, ArrowRight } from 'lucide-rea
 import { clsx } from 'clsx';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
 import NewsArticleModal from '../components/NewsArticleModal';
+import OptimizedImage from '../components/OptimizedImage';
 
 const NEWS_ITEMS = [
   {
@@ -147,11 +148,11 @@ export default function NewsTab() {
             onClick={() => setSelectedArticle(featuredPost)}
           >
             <div className="relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 aspect-[2/1] md:aspect-[2.5/1]">
-              <img 
+              <OptimizedImage 
                 src={featuredPost.image} 
                 alt={featuredPost.title} 
+                variant="banner"
                 className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
-                referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
               
@@ -193,11 +194,11 @@ export default function NewsTab() {
               className="group cursor-pointer bg-neutral-900/40 backdrop-blur-md border border-white/5 hover:border-primary-500/30 rounded-3xl overflow-hidden transition-all duration-300 flex flex-col"
             >
               <div className="relative h-48 overflow-hidden">
-                <img 
+                <OptimizedImage 
                   src={post.image} 
                   alt={post.title} 
+                  variant="medium"
                   className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
-                  referrerPolicy="no-referrer"
                 />
                 <div className="absolute top-4 left-4">
                   <span className="px-3 py-1 rounded-full bg-neutral-950/80 backdrop-blur-md text-primary-400 border border-white/10 text-xs font-bold tracking-wider uppercase">

@@ -1,11 +1,12 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, Camera } from 'lucide-react';
+import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, AlertTriangle } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getFromCache, saveToCache, CACHE_KEYS } from '../utils/persistence';
 import ProfilePopover from '../components/ProfilePopover';
+import OptimizedImage from '../components/OptimizedImage';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
 import FormattedText from '../components/FormattedText';
 import TagInput from '../components/TagInput';
@@ -53,10 +54,56 @@ const MESSAGES: Message[] = [
 import { useUser } from '../contexts/UserContext';
 import { useSocket } from '../contexts/SocketContext';
 
-export default function GroupsTab() {
+function ReportSummary({ id }: { id: string }) {
+  const [report, setReport] = useState<any>(null);
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    fetch(`/api/reports/${id}`, {
+      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+    })
+    .then(res => res.json())
+    .then(data => setReport(data.report))
+    .catch(console.error);
+  }, [id]);
+
+  if (!report) return <div className="p-4 text-xs italic text-neutral-500">Loading report summary #{id.slice(0, 8)}...</div>;
+
+  return (
+    <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 my-2 shadow-inner">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+           <AlertTriangle className={clsx("w-4 h-4", report.status === 'PENDING' ? "text-yellow-500" : "text-neutral-400")} />
+           <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Support Ticket</span>
+        </div>
+        <span className={clsx("text-[10px] px-2 py-0.5 rounded font-bold uppercase", 
+          report.status === 'PENDING' ? "bg-yellow-500/10 text-yellow-500" : 
+          report.status === 'RESOLVED' ? "bg-emerald-500/10 text-emerald-500" : "bg-neutral-800 text-neutral-500"
+        )}>
+          {report.status}
+        </span>
+      </div>
+      <div className="space-y-2 mb-4">
+        <p className="text-sm font-bold text-white leading-tight">Reported {report.type}</p>
+        <p className="text-xs text-neutral-400 line-clamp-2 italic">"{report.reason}"</p>
+      </div>
+      <button 
+        onClick={(e) => {
+          e.stopPropagation();
+          navigate(`/reports/${report.id}`);
+        }}
+        className="w-full py-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-[11px] font-bold rounded-lg border border-neutral-700 transition-all uppercase tracking-widest"
+      >
+        View Full Report Details
+      </button>
+    </div>
+  );
+}
+
+export default function MessagesTab() {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
-  const [messageCache, setMessageCache] = useState<Record<string, any[]>>(getFromCache(CACHE_KEYS.MESSAGES + '_groups', {}));
+  const [messageCache, setMessageCache] = useState<Record<string, any[]>>(getFromCache(CACHE_KEYS.MESSAGES, {}));
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -64,11 +111,12 @@ export default function GroupsTab() {
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [activeMessageOptions, setActiveMessageOptions] = useState<{ id: string, rect: DOMRect, isMe: boolean, isDeleted: boolean, msg: any } | null>(null);
-  const [joinedGroups, setJoinedGroups] = useState<any[]>(getFromCache(CACHE_KEYS.GROUPS + '_groups', []));
   const [availableGroups, setAvailableGroups] = useState<any[]>([]);
+  const [joinedGroups, setJoinedGroups] = useState<any[]>(getFromCache(CACHE_KEYS.GROUPS, []));
   const [showJoinModal, setShowJoinModal] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState('');
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
@@ -76,6 +124,11 @@ export default function GroupsTab() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Reporting State
+  const [reportingMessage, setReportingMessage] = useState<any | null>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   
   // Create Group State
   const [newGroupName, setNewGroupName] = useState('');
@@ -105,11 +158,9 @@ export default function GroupsTab() {
 
       const handleNewMessage = (data: { message: any }) => {
         setMessages(prev => {
-          // Check if message already exists (e.g. from optimistic update)
           if (prev.some(m => m.id === data.message.id)) {
             return prev;
           }
-          // Also check if we have a pending message with the same content
           const pendingIndex = prev.findIndex(m => m.isPending && m.content === data.message.content && m.authorId === data.message.authorId);
           if (pendingIndex !== -1) {
             const newMessages = [...prev];
@@ -143,14 +194,9 @@ export default function GroupsTab() {
   useEffect(() => {
     const groupIdFromUrl = searchParams.get('id');
     if (groupIdFromUrl && joinedGroups.some(g => g.id === groupIdFromUrl)) {
-      const group = joinedGroups.find(g => g.id === groupIdFromUrl);
-      if (group?.isDirectMessage) {
-        navigate(`/messages?id=${groupIdFromUrl}`);
-      } else {
-        setActiveGroupId(groupIdFromUrl);
-      }
+      setActiveGroupId(groupIdFromUrl);
     }
-  }, [searchParams, joinedGroups, navigate]);
+  }, [searchParams, joinedGroups]);
 
   useEffect(() => {
     if (activeGroupId) {
@@ -229,7 +275,7 @@ export default function GroupsTab() {
             [groupId]: newMessages.slice(-50)
           };
           setMessageCache(newCache);
-          saveToCache(CACHE_KEYS.MESSAGES + '_groups', newCache);
+          saveToCache(CACHE_KEYS.MESSAGES, newCache);
           
           return newMessages;
         });
@@ -265,7 +311,7 @@ export default function GroupsTab() {
         const myData = await myGroupsRes.json();
         
         setJoinedGroups(myData.groups);
-        saveToCache(CACHE_KEYS.GROUPS + '_groups', myData.groups);
+        saveToCache(CACHE_KEYS.GROUPS, myData.groups);
         
         // Filter out joined groups from available
         const joinedIds = new Set(myData.groups.map((g: any) => g.id));
@@ -274,16 +320,11 @@ export default function GroupsTab() {
         if (myData.groups.length > 0 && !activeGroupId) {
           const groupIdFromUrl = searchParams.get('id');
           if (groupIdFromUrl && myData.groups.some((g: any) => g.id === groupIdFromUrl)) {
-            const group = myData.groups.find((g: any) => g.id === groupIdFromUrl);
-            if (group?.isDirectMessage) {
-              navigate(`/messages?id=${groupIdFromUrl}`);
-            } else {
-              setActiveGroupId(groupIdFromUrl);
-            }
+            setActiveGroupId(groupIdFromUrl);
           } else {
-            const nonDms = myData.groups.filter((g: any) => !g.isDirectMessage);
-            if (nonDms.length > 0) {
-              setActiveGroupId(nonDms[0].id);
+            const dms = myData.groups.filter((g: any) => g.isDirectMessage);
+            if (dms.length > 0) {
+              setActiveGroupId(dms[0].id);
             }
           }
         }
@@ -339,22 +380,28 @@ export default function GroupsTab() {
   };
 
   useEffect(() => {
-    const displayed = joinedGroups.filter(g => !g.isDirectMessage);
+    const displayed = joinedGroups.filter(g => g.isDirectMessage);
     if (displayed.length > 0 && !displayed.some(g => g.id === activeGroupId)) {
       setActiveGroupId(displayed[0].id);
     }
   }, [joinedGroups]);
 
-  const displayedGroups = joinedGroups.filter(g => !g.isDirectMessage);
+  const displayedGroups = joinedGroups.filter(g => g.isDirectMessage);
   const activeGroup = joinedGroups.find(g => g.id === activeGroupId) || displayedGroups[0] || null;
 
-  const getGroupInitials = (name: string) => {
-    if (!name) return '';
-    const words = name.split(' ');
-    if (words.length >= 2) {
-      return (words[0][0] + words[1][0]).toUpperCase();
-    }
-    return name.substring(0, 2).toUpperCase();
+  const getOtherMember = (group: any) => {
+    if (!group || !group.members) return null;
+    return group.members.find((m: any) => m.id !== user?.id) || group.members[0];
+  };
+
+  const getDMName = (group: any) => {
+    const other = getOtherMember(group);
+    return other ? (other.name || other.username) : group.name;
+  };
+
+  const getDMAvatar = (group: any) => {
+    const other = getOtherMember(group);
+    return other?.avatarUrl || `https://picsum.photos/seed/${other?.id || group.id}/100/100`;
   };
 
   const handleScroll = () => {
@@ -393,8 +440,10 @@ export default function GroupsTab() {
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     
     // Determine if we should auto-scroll
+    // 1. If we're already at the bottom (within 150px)
     const wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
     
+    // 2. If the last message is from the current user
     const lastMsg = messages[messages.length - 1];
     const isMe = lastMsg && (lastMsg.authorId === user?.id || lastMsg.isMe);
 
@@ -431,6 +480,7 @@ export default function GroupsTab() {
       if (res.ok) {
         fetchGroups();
         setShowGroupInfo(false);
+        setActiveGroupId('');
       }
     } catch (error) {
       console.error('Failed to leave group', error);
@@ -451,7 +501,9 @@ export default function GroupsTab() {
       
       if (res.ok) {
         const data = await res.json();
-        navigate(`/messages?id=${data.group.id}`);
+        await fetchGroups();
+        setActiveGroupId(data.group.id);
+        setShowGroupInfo(false);
       }
     } catch (error) {
       console.error('Failed to start DM', error);
@@ -565,33 +617,6 @@ export default function GroupsTab() {
     }
   };
 
-  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0] && activeGroup) {
-      const file = e.target.files[0];
-      // In a real app, you would upload this file to a storage service (like S3 or Firebase Storage)
-      // and get back a URL. For this demo, we'll use a local object URL or a placeholder.
-      const fakeUrl = URL.createObjectURL(file);
-      
-      try {
-        const token = localStorage.getItem('token');
-        const res = await fetch(`/api/groups/${activeGroup.id}`, {
-          method: 'PATCH',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}`
-          },
-          body: JSON.stringify({ avatarUrl: fakeUrl })
-        });
-        
-        if (res.ok) {
-          fetchGroups(); // Refresh groups to get the new avatar
-        }
-      } catch (error) {
-        console.error('Failed to update group avatar', error);
-      }
-    }
-  };
-
   const availableCourses = allCourses.filter(c => !myCourses.find(mc => mc.id === c.id));
 
   const categories = useMemo(() => {
@@ -626,18 +651,9 @@ export default function GroupsTab() {
       {/* Sidebar */}
       <div className="w-full md:w-80 bg-neutral-900 border-r border-neutral-800 flex flex-col hidden md:flex">
         <div className="p-4 border-b border-neutral-800 flex items-center justify-between">
-          <h2 className="text-lg font-bold text-neutral-100">Academic Groups</h2>
-          <div className="flex gap-2">
-            <button 
-              onClick={() => setShowJoinModal(true)}
-              className="p-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors"
-              title="Join Course"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
+          <h2 className="text-lg font-bold text-neutral-100">Direct Messages</h2>
         </div>
-        
+
         <div className="p-4 border-b border-neutral-800">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
@@ -649,7 +665,10 @@ export default function GroupsTab() {
           </div>
         </div>
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-          {displayedGroups.map((group, index) => (
+          {displayedGroups.map((group, index) => {
+            const dmName = getDMName(group);
+            const dmAvatar = getDMAvatar(group);
+            return (
             <motion.button
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
@@ -663,16 +682,12 @@ export default function GroupsTab() {
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-400 overflow-hidden">
-                  {group.avatarUrl ? (
-                    <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span className="text-sm font-bold">{getGroupInitials(group.name)}</span>
-                  )}
+                  <OptimizedImage src={dmAvatar} alt={dmName} className="w-full h-full object-cover" variant="small" />
                 </div>
                 <div>
-                  <div className="font-medium text-sm text-neutral-200">{group.name}</div>
+                  <div className="font-medium text-sm text-neutral-200">{dmName}</div>
                   <div className="text-xs text-neutral-500 flex items-center gap-1">
-                    <Users className="w-3 h-3" /> {group._count?.members || 0} students
+                    Direct Message
                   </div>
                 </div>
               </div>
@@ -682,10 +697,10 @@ export default function GroupsTab() {
                 </div>
               )}
             </motion.button>
-          ))}
+          )})}
           {displayedGroups.length === 0 && (
             <div className="p-4 text-center text-neutral-500 text-sm">
-              You haven't joined any groups yet. Join a course to access its groups.
+              You don't have any direct messages yet.
             </div>
           )}
         </div>
@@ -701,16 +716,12 @@ export default function GroupsTab() {
                 className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
                 onClick={() => setShowGroupInfo(true)}
               >
-                <div className="w-10 h-10 rounded-full bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-400 md:hidden overflow-hidden">
-                  {activeGroup.avatarUrl ? (
-                    <img src={activeGroup.avatarUrl} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span className="text-sm font-bold">{getGroupInitials(activeGroup.name)}</span>
-                  )}
+                <div className="w-10 h-10 rounded-full bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-400 overflow-hidden">
+                  <img src={getDMAvatar(activeGroup)} alt={getDMName(activeGroup)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
                 <div>
-                  <h3 className="font-bold text-neutral-100">{activeGroup.name}</h3>
-                  <p className="text-xs text-neutral-500">{activeGroup._count?.members || 0} students</p>
+                  <h3 className="font-bold text-neutral-100">{getDMName(activeGroup)}</h3>
+                  <p className="text-xs text-neutral-500">Direct Message</p>
                 </div>
               </div>
               <div className="flex items-center gap-4 text-neutral-400">
@@ -720,15 +731,6 @@ export default function GroupsTab() {
                 >
                   <Info className="w-5 h-5" />
                 </button>
-              </div>
-            </div>
-
-            {/* Pinned Message */}
-            <div className="bg-neutral-900/80 border-b border-neutral-800 px-4 py-2 flex items-start gap-3 text-sm">
-              <Pin className="w-4 h-4 text-primary-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="font-semibold text-primary-400 text-xs block mb-0.5">Pinned by Admin</span>
-                <p className="text-neutral-300">Midterm is scheduled for Oct 20th in Room 402. Bring your student ID.</p>
               </div>
             </div>
 
@@ -744,11 +746,6 @@ export default function GroupsTab() {
                   <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
-              <div className="text-center mb-6">
-                <div className="inline-block bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs px-3 py-1 rounded-full">
-                  Welcome to the {activeGroup.name} group! This is a space for students to discuss the course.
-                </div>
-              </div>
               {messages.filter(m => !m.deletedForMe).map((msg, index, arr) => {
                 const prevMsg = index > 0 ? arr[index - 1] : null;
                 const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
@@ -797,11 +794,11 @@ export default function GroupsTab() {
                               }}
                             >
                               <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
-                                <img 
+                                <OptimizedImage 
                                   src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
                                   alt={senderName} 
                                   className="w-full h-full object-cover" 
-                                  referrerPolicy="no-referrer" 
+                                  variant="small"
                                 />
                               </div>
                             </ProfilePopover>
@@ -889,7 +886,11 @@ export default function GroupsTab() {
 
                           <div className="flex items-end justify-between gap-3">
                             <div className="flex-1 min-w-0">
-                              <FormattedText text={msg.content || msg.text} />
+                              {msg.content?.startsWith('[REPORT_SUMMARY:') ? (
+                                <ReportSummary id={msg.content.match(/\[REPORT_SUMMARY:(.+)\]/)?.[1] || ''} />
+                              ) : (
+                                <FormattedText text={msg.content || msg.text} />
+                              )}
                             </div>
                             <div className={clsx(
                               "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
@@ -1071,16 +1072,25 @@ export default function GroupsTab() {
         ) : (
           <div className="flex-1 flex flex-col items-center justify-center text-neutral-500 p-6 text-center">
             <div className="w-16 h-16 rounded-full bg-neutral-900 flex items-center justify-center mb-4 border border-neutral-800">
-              <Users className="w-8 h-8" />
+              <MessageSquare className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-bold text-neutral-300 mb-2">No Groups Selected</h3>
-            <p className="max-w-md">Join an academic group from the sidebar to start discussing with your classmates.</p>
-            <button 
-              onClick={() => setShowJoinModal(true)}
-              className="mt-6 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors font-medium"
-            >
-              Find Groups
-            </button>
+            {displayedGroups.length > 0 ? (
+              <>
+                <h3 className="text-xl font-bold text-neutral-300 mb-2">Select a Conversation</h3>
+                <p className="max-w-md">Pick a direct message from the sidebar to start chatting.</p>
+              </>
+            ) : (
+              <>
+                <h3 className="text-xl font-bold text-neutral-300 mb-2">No Private Messages</h3>
+                <p className="max-w-md text-sm">Connect with students and classmates to start private conversations. You can find people in groups or the directory.</p>
+                <button 
+                  onClick={() => navigate('/groups')}
+                  className="mt-6 px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-full transition-colors font-medium text-sm"
+                >
+                  Go to Groups
+                </button>
+              </>
+            )}
           </div>
         )}
       </div>
@@ -1097,7 +1107,7 @@ export default function GroupsTab() {
           >
             <div className="w-80 h-full flex flex-col border-l border-neutral-800">
               <div className="p-4 border-b border-neutral-800 flex items-center justify-between shrink-0">
-                <h2 className="text-lg font-bold text-neutral-100">Group Info</h2>
+                <h2 className="text-lg font-bold text-neutral-100">{activeGroup?.isDirectMessage ? 'User Info' : 'Group Info'}</h2>
                 <button onClick={() => setShowGroupInfo(false)} className="md:hidden p-1 text-neutral-400 hover:text-white">
                   <X className="w-5 h-5" />
                 </button>
@@ -1105,21 +1115,11 @@ export default function GroupsTab() {
               
               <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-6 text-center border-b border-neutral-800">
-                <div className="w-20 h-20 mx-auto rounded-2xl bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-neutral-400 mb-4 shadow-inner overflow-hidden relative group">
-                  {activeGroup?.avatarUrl ? (
-                    <img src={activeGroup.avatarUrl} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                  ) : (
-                    <span className="text-2xl font-bold">{getGroupInitials(activeGroup?.name || '')}</span>
-                  )}
-                  {activeGroupMembers.find(m => m.id === user?.id)?.role === 'admin' && (
-                    <label className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                      <Camera className="w-6 h-6 text-white" />
-                      <input type="file" className="hidden" accept="image/*" onChange={handleAvatarUpload} />
-                    </label>
-                  )}
+                <div className="w-20 h-20 mx-auto rounded-2xl bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-neutral-400 mb-4 shadow-inner overflow-hidden">
+                  <img src={getDMAvatar(activeGroup)} alt={getDMName(activeGroup)} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                 </div>
-                <h3 className="text-xl font-bold text-white mb-1">{activeGroup?.name}</h3>
-                <p className="text-sm text-neutral-400">{activeGroup?.description || 'Academic Group'}</p>
+                <h3 className="text-xl font-bold text-white mb-1">{getDMName(activeGroup)}</h3>
+                <p className="text-sm text-neutral-400">{activeGroup?.isDirectMessage ? 'Student' : 'Group'}</p>
               </div>
 
               <div className="p-4 border-b border-neutral-800 space-y-2">
@@ -1136,22 +1136,19 @@ export default function GroupsTab() {
                 </button>
                 
                 <button 
-                  onClick={handleLeaveGroup}
+                  onClick={() => setShowDeleteConfirm(true)}
                   className="w-full flex items-center gap-3 p-3 rounded-lg hover:bg-neutral-800 transition-colors text-red-400 hover:text-red-300"
                 >
-                  <LogOut className="w-5 h-5" /> Leave Group
+                  {activeGroup?.isDirectMessage ? (
+                    <><Trash2 className="w-5 h-5" /> Delete Chat</>
+                  ) : (
+                    <><LogOut className="w-5 h-5" /> Leave Group</>
+                  )}
                 </button>
               </div>
 
               <div className="p-4 border-b border-neutral-800">
                 <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4">Shared Media</h4>
-                <button 
-                  onClick={() => navigate('/academics')}
-                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl flex items-center justify-center gap-2 transition-colors mb-4 border border-neutral-700 hover:border-neutral-600"
-                >
-                  <Folder className="w-4 h-4 text-primary-400" />
-                  Go to Group Files
-                </button>
                 <div className="flex gap-4 flex-wrap">
                   {messages.filter(m => m.attachmentType?.includes('pdf') || m.attachmentType?.includes('document') || m.attachmentType?.includes('text')).length > 0 && (
                     <div className="flex flex-col items-center gap-2 cursor-pointer group">
@@ -1190,57 +1187,151 @@ export default function GroupsTab() {
                   )}
                 </div>
               </div>
-
-              <div className="p-4">
-                <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4 flex items-center justify-between">
-                  <span>Members ({activeGroupMembers.length})</span>
-                  <Search className="w-4 h-4" />
-                </h4>
-                <div className="space-y-3">
-                  {activeGroupMembers.map(member => (
-                    <div key={member.id} className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <ProfilePopover
-                          username={member.username}
-                          user={{
-                            name: member.name || member.username,
-                            handle: member.username,
-                            bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
-                            avatar: member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`
-                          }}
-                        >
-                          <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden">
-                            <img 
-                              src={member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`} 
-                              alt={member.name || member.username} 
-                              className="w-full h-full object-cover" 
-                              referrerPolicy="no-referrer" 
-                            />
-                          </div>
-                        </ProfilePopover>
-                        <span className="text-sm font-medium text-neutral-200">{member.name || member.username}</span>
-                      </div>
-                      {member.role === 'admin' && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-bold text-primary-400 bg-primary-500/10 px-2 py-0.5 rounded">ADMIN</span>
-                          {member.id !== user?.id && (
-                            <button 
-                              onClick={() => handleStartDM(member.id)}
-                              className="p-1.5 bg-neutral-800 hover:bg-neutral-700 rounded-md text-neutral-300 transition-colors" 
-                              title="Message Admin privately"
-                            >
-                              <MessageSquare className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
             </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Report Message Modal */}
+      <AnimatePresence>
+        {reportingMessage && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/90 backdrop-blur-md"
+              onClick={() => {
+                if (!isSubmittingReport) {
+                  setReportingMessage(null);
+                  setReportReason('');
+                }
+              }}
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0, y: 20 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.95, opacity: 0, y: 20 }}
+              className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-6 border-b border-neutral-800 flex justify-between items-center bg-neutral-900/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-yellow-500/10 flex items-center justify-center text-yellow-500">
+                    <AlertTriangle className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-lg text-white">Report Message</h3>
+                    <p className="text-xs text-neutral-400">Help us keep CampusHub safe</p>
+                  </div>
+                </div>
+                <button 
+                  disabled={isSubmittingReport}
+                  onClick={() => {
+                    setReportingMessage(null);
+                    setReportReason('');
+                  }} 
+                  className="text-neutral-500 hover:text-white transition-colors disabled:opacity-50"
+                >
+                  <X className="w-6 h-6" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="bg-neutral-800/50 rounded-xl p-4 border border-neutral-800">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block mb-2">Message to report</span>
+                  <div className="flex items-center gap-3 mb-2">
+                    <img 
+                      src={reportingMessage.author?.avatarUrl || `https://picsum.photos/seed/${reportingMessage.authorId}/50/50`} 
+                      className="w-6 h-6 rounded-full object-cover" 
+                      alt=""
+                    />
+                    <span className="text-xs font-bold text-neutral-300">{reportingMessage.author?.name || 'User'}</span>
+                  </div>
+                  <p className="text-sm text-neutral-200 line-clamp-3 italic">"{reportingMessage.content}"</p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider block">Why are you reporting this message?</label>
+                  <textarea 
+                    autoFocus
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    placeholder="Provide details about the issue..."
+                    className="w-full h-32 bg-neutral-950 border border-neutral-800 rounded-xl p-4 text-sm text-neutral-200 focus:outline-none focus:border-primary-500/50 transition-all resize-none placeholder:text-neutral-700"
+                  />
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {['Harassment', 'Spam', 'Hate Speech', 'Inappropriate Content', 'Self-Harm'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setReportReason(prev => prev ? `${prev}, ${tag}` : tag)}
+                        className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-[10px] font-bold rounded-full transition-colors border border-neutral-700"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-neutral-900/50 border-t border-neutral-800 flex gap-3">
+                <button 
+                  disabled={isSubmittingReport}
+                  onClick={() => {
+                    setReportingMessage(null);
+                    setReportReason('');
+                  }}
+                  className="flex-1 py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  disabled={isSubmittingReport || !reportReason.trim()}
+                  onClick={async () => {
+                    setIsSubmittingReport(true);
+                    try {
+                      const token = localStorage.getItem('token');
+                      const res = await fetch('/api/reports', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                          reportedId: reportingMessage.authorId || reportingMessage.author?.id,
+                          type: 'MESSAGE',
+                          contentId: reportingMessage.id,
+                          reason: reportReason
+                        })
+                      });
+
+                      if (res.ok) {
+                        setReportingMessage(null);
+                        setReportReason('');
+                        alert('Your report has been submitted. Thank you for helping keep our community safe.');
+                      } else {
+                        const data = await res.json();
+                        alert(data.error || 'Failed to submit report. Please try again.');
+                      }
+                    } catch (error) {
+                      console.error('Report error:', error);
+                      alert('An error occurred while submitting your report.');
+                    } finally {
+                      setIsSubmittingReport(false);
+                    }
+                  }}
+                  className="flex-2 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-primary-500/20 disabled:opacity-50 disabled:bg-neutral-800 flex items-center justify-center gap-2 px-8"
+                >
+                  {isSubmittingReport ? (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                  ) : (
+                    'Submit Report'
+                  )}
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 
@@ -1365,6 +1456,14 @@ export default function GroupsTab() {
               >
                 <Reply className="w-4 h-4" /> Reply
               </button>
+              {!activeMessageOptions.isMe && (
+                <button 
+                  onClick={() => { setReportingMessage(activeMessageOptions.msg); setActiveMessageOptions(null); }}
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-yellow-400 hover:text-yellow-300 text-sm rounded-lg transition-colors flex items-center gap-3"
+                >
+                  <AlertTriangle className="w-4 h-4" /> Report Message
+                </button>
+              )}
               {activeMessageOptions.isMe && !activeMessageOptions.isDeleted && (
                 <>
                   <button 
@@ -1386,6 +1485,77 @@ export default function GroupsTab() {
         </div>,
         document.body
       )}
+
+      {/* Delete Chat Confirmation Modal */}
+      <AnimatePresence>
+        {showDeleteConfirm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setShowDeleteConfirm(false)}
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden flex flex-col"
+            >
+              <div className="p-6 text-center">
+                <div className="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+                  {activeGroup?.isDirectMessage ? <Trash2 className="w-8 h-8 text-red-500" /> : <LogOut className="w-8 h-8 text-red-500" />}
+                </div>
+                <h3 className="font-bold text-xl text-white mb-2">
+                  {activeGroup?.isDirectMessage ? 'Delete Chat?' : 'Leave Group?'}
+                </h3>
+                <p className="text-neutral-400 text-sm mb-6">
+                  {activeGroup?.isDirectMessage 
+                    ? 'Are you sure you want to delete this direct message? This action cannot be undone and will remove all messages for you.'
+                    : 'Are you sure you want to leave this group? You will no longer receive messages from it.'}
+                </p>
+                <div className="flex gap-3">
+                  <button 
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="flex-1 py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (!activeGroup) return;
+                      try {
+                        const token = localStorage.getItem('token');
+                        if (activeGroup.isDirectMessage) {
+                          const res = await fetch(`/api/dms/${activeGroup.id}`, {
+                            method: 'DELETE',
+                            headers: { Authorization: `Bearer ${token}` }
+                          });
+                          if (res.ok) {
+                            fetchGroups();
+                            setShowGroupInfo(false);
+                            setShowDeleteConfirm(false);
+                            setActiveGroupId('');
+                          }
+                        } else {
+                          handleLeaveGroup();
+                          setShowDeleteConfirm(false);
+                        }
+                      } catch (error) {
+                        console.error('Failed to delete chat or leave group', error);
+                      }
+                    }}
+                    className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium transition-colors"
+                  >
+                    {activeGroup?.isDirectMessage ? 'Delete' : 'Leave'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

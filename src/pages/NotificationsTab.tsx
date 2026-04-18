@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Bell, CheckCircle2, MessageSquare, AlertTriangle } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
+import { useSocket } from '../contexts/SocketContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function NotificationsTab() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { isAuthenticated } = useUser();
+  const { socket } = useSocket();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,11 +39,32 @@ export default function NotificationsTab() {
     }
   }, [isAuthenticated]);
 
+  useEffect(() => {
+    if (socket) {
+      const handleNewNotification = (notification: any) => {
+        setNotifications(prev => [{...notification, read: true}, ...prev]);
+        
+        // Mark as read immediately since we are on the notifications page
+        fetch('/api/notifications/read', {
+          method: 'PUT',
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+        }).catch(console.error);
+      };
+
+      socket.on('new_notification', handleNewNotification);
+
+      return () => {
+        socket.off('new_notification', handleNewNotification);
+      };
+    }
+  }, [socket]);
+
   const getIconConfig = (type: string) => {
     switch (type) {
       case 'MENTION': return { icon: MessageSquare, color: 'text-blue-400', bg: 'bg-blue-400/10' };
       case 'REPORT_ANSWER': return { icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-400/10' };
       case 'SYSTEM': return { icon: Bell, color: 'text-primary-400', bg: 'bg-primary-400/10' };
+      case 'MESSAGE': return { icon: MessageSquare, color: 'text-primary-400', bg: 'bg-primary-400/10' };
       default: return { icon: Bell, color: 'text-neutral-400', bg: 'bg-neutral-400/10' };
     }
   };

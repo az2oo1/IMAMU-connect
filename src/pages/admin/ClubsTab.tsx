@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Plus, Trash2, Users } from 'lucide-react';
+import { Search, Plus, Trash2, Users, Edit2 } from 'lucide-react';
+import EditClubModal from './EditClubModal';
+import TagInput from '../../components/TagInput';
 
 export default function ClubsTab() {
   const [clubs, setClubs] = useState<any[]>([]);
@@ -8,6 +10,8 @@ export default function ClubsTab() {
   const [isCreating, setIsCreating] = useState(false);
   const [newClubName, setNewClubName] = useState('');
   const [newClubDesc, setNewClubDesc] = useState('');
+  const [newClubTags, setNewClubTags] = useState('');
+  const [editingClub, setEditingClub] = useState<any>(null);
 
   const fetchClubs = async () => {
     try {
@@ -38,11 +42,12 @@ export default function ClubsTab() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}` 
         },
-        body: JSON.stringify({ name: newClubName, description: newClubDesc })
+        body: JSON.stringify({ name: newClubName, description: newClubDesc, tags: newClubTags })
       });
       if (res.ok) {
         setNewClubName('');
         setNewClubDesc('');
+        setNewClubTags('');
         setIsCreating(false);
         fetchClubs();
       }
@@ -109,6 +114,14 @@ export default function ClubsTab() {
                 required
               />
             </div>
+            <div>
+              <label className="block text-sm font-medium text-neutral-300 mb-1">Tags</label>
+              <TagInput
+                tags={newClubTags}
+                onChange={setNewClubTags}
+                placeholder="e.g. Technology, Coding"
+              />
+            </div>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
@@ -170,13 +183,20 @@ export default function ClubsTab() {
                   <td className="p-4">
                     <span className="inline-flex items-center gap-1.5 text-sm text-neutral-300">
                       <Users className="w-4 h-4 text-neutral-500" />
-                      {club._count.members}
+                      {club._count?.members || 0}
                     </span>
                   </td>
                   <td className="p-4 text-sm text-neutral-400">
                     {new Date(club.createdAt).toLocaleDateString()}
                   </td>
                   <td className="p-4 text-right">
+                    <button 
+                      onClick={() => setEditingClub(club)}
+                      className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors mr-2"
+                      title="Edit Club"
+                    >
+                      <Edit2 className="w-5 h-5" />
+                    </button>
                     <button 
                       onClick={() => handleDeleteClub(club.id)}
                       className="p-2 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
@@ -191,6 +211,17 @@ export default function ClubsTab() {
           </table>
         </div>
       </div>
+
+      {editingClub && (
+        <EditClubModal
+          club={editingClub}
+          onClose={() => setEditingClub(null)}
+          onUpdate={() => {
+            setEditingClub(null);
+            fetchClubs();
+          }}
+        />
+      )}
     </div>
   );
 }

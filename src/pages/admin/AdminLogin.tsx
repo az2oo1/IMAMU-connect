@@ -9,7 +9,16 @@ export default function AdminLogin() {
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
-  const { login } = useUser();
+  const { login, user, isAuthenticated, updateProfile } = useUser();
+
+  const handleContinueAsUser = () => {
+    const isAdminEmail = user?.studentEmail === 'abdulazizalgassem4@gmail.com' || user?.googleEmail === 'abdulazizalgassem4@gmail.com';
+    if (user?.role === 'ADMIN' || isAdminEmail) {
+      navigate('/admin/users');
+    } else {
+      setError('Your current account does not have administrator privileges.');
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -19,7 +28,8 @@ export default function AdminLogin() {
     try {
       const loggedInUser = await login(username, password);
 
-      if (loggedInUser.role !== 'ADMIN') {
+      const isAdminEmail = loggedInUser.studentEmail === 'abdulazizalgassem4@gmail.com' || loggedInUser.googleEmail === 'abdulazizalgassem4@gmail.com';
+      if (loggedInUser.role !== 'ADMIN' && !isAdminEmail) {
         throw new Error('Unauthorized: Admin access required.');
       }
 
@@ -93,6 +103,33 @@ export default function AdminLogin() {
           >
             {isLoading ? 'Authenticating...' : 'Sign In to Admin Portal'}
           </button>
+
+          {isAuthenticated && user && (
+            <div className="mt-6">
+              <div className="relative mb-6">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-neutral-800"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-neutral-900 px-2 text-neutral-500">Or continue with</span>
+                </div>
+              </div>
+              
+              <button
+                type="button"
+                onClick={handleContinueAsUser}
+                className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl transition-all border border-neutral-700"
+              >
+                <img 
+                  src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100/100`} 
+                  alt="" 
+                  className="w-6 h-6 rounded-full"
+                  referrerPolicy="no-referrer"
+                />
+                Continue as {user.name || user.username}
+              </button>
+            </div>
+          )}
         </form>
       </div>
     </div>

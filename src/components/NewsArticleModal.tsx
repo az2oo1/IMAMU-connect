@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Calendar, Clock, Share2, Bookmark, User, ChevronLeft } from 'lucide-react';
 import FormattedText from './FormattedText';
 import ProfilePopover from './ProfilePopover';
+import OptimizedImage from './OptimizedImage';
 
 interface NewsItem {
   id: number;
@@ -55,11 +56,11 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
 
             {/* Left Side: Image Hero (Spans full width on mobile, half on desktop) */}
             <div className="w-full md:w-1/2 h-64 md:h-full relative shrink-0">
-              <img 
+              <OptimizedImage 
                 src={article.image} 
                 alt={article.title} 
+                variant="banner"
                 className="w-full h-full object-cover"
-                referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent md:bg-gradient-to-r md:from-transparent md:to-neutral-950" />
               
@@ -115,9 +116,12 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
                     }}
                   >
                     <div className="flex items-center gap-3 hover:bg-neutral-900/50 p-2 -ml-2 rounded-2xl transition-colors">
-                      <div className="w-10 h-10 rounded-full bg-neutral-800 overflow-hidden border border-neutral-700 shrink-0">
-                        <img src={article.authorAvatar || `https://picsum.photos/seed/${article.author}/100/100`} alt={article.author} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      </div>
+                      <OptimizedImage 
+                        src={article.authorAvatar || `https://picsum.photos/seed/${article.author}/100/100`} 
+                        alt={article.author || ''} 
+                        variant="small"
+                        className="w-10 h-10 rounded-full bg-neutral-800 overflow-hidden border border-neutral-700 shrink-0" 
+                      />
                       <div>
                         <div className="text-sm font-bold text-neutral-200">{article.author || 'University Press'}</div>
                         <div className="text-xs text-neutral-500">Author</div>

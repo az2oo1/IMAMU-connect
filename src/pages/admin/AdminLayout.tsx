@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Users, Building2, Newspaper, AlertTriangle, LogOut, Shield, Download } from 'lucide-react';
+import { Users, Building2, BookOpen, Newspaper, AlertTriangle, LogOut, Shield, Download } from 'lucide-react';
 import { clsx } from 'clsx';
 
 export default function AdminLayout() {
@@ -26,7 +26,8 @@ export default function AdminLayout() {
         });
         if (res.ok) {
           const data = await res.json();
-          if (data.user.role === 'ADMIN') {
+          const isAdminEmail = data.user.studentEmail === 'abdulazizalgassem4@gmail.com' || data.user.googleEmail === 'abdulazizalgassem4@gmail.com';
+          if (data.user.role === 'ADMIN' || isAdminEmail) {
             setIsAdminAuthenticated(true);
           } else {
             if (location.pathname !== '/admin/login') {
@@ -99,6 +100,7 @@ export default function AdminLayout() {
   const navItems = [
     { to: '/admin/users', icon: Users, label: 'Users' },
     { to: '/admin/clubs', icon: Building2, label: 'Clubs' },
+    { to: '/admin/courses', icon: BookOpen, label: 'Courses' },
     { to: '/admin/news', icon: Newspaper, label: 'News' },
     { to: '/admin/reports', icon: AlertTriangle, label: 'Reports' },
   ];

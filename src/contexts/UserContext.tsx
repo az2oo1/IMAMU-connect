@@ -16,6 +16,7 @@ interface User {
   bannerUrl?: string | null;
   links?: UserLink[];
   createdAt?: string;
+  role?: string;
 }
 
 interface UserContextType {

@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Edit2, Calendar, Camera, Compass, X, Plus, Trash2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { clsx } from 'clsx';
+import OptimizedImage from '../components/OptimizedImage';
 import { useUser } from '../contexts/UserContext';
 import { getIconForUrl, getPlatformName } from '../utils/linkHelpers';
 
@@ -79,11 +80,11 @@ export default function PersonalTab() {
 
       {/* Cover Photo */}
       <div className="h-48 md:h-64 bg-neutral-900 relative group cursor-pointer overflow-hidden" onClick={() => bannerInputRef.current?.click()}>
-        <img 
+        <OptimizedImage 
           src={user.bannerUrl || `https://picsum.photos/seed/${user.id}_banner/1200/400`} 
           alt="Cover" 
+          variant="banner"
           className="w-full h-full object-cover transition-opacity group-hover:opacity-75"
-          referrerPolicy="no-referrer"
         />
         <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
           <div className="bg-black/50 p-2 rounded-full backdrop-blur-sm">
@@ -98,11 +99,11 @@ export default function PersonalTab() {
         <div className="bg-neutral-900/80 backdrop-blur-xl border border-neutral-800 rounded-3xl p-6 shadow-xl mb-6">
           <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-end">
             <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
-              <img 
+              <OptimizedImage 
                 src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/150/150`} 
                 alt="Profile" 
+                variant="large"
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border-4 border-neutral-900 object-cover bg-neutral-800 shadow-lg transition-opacity group-hover:opacity-50"
-                referrerPolicy="no-referrer"
               />
               <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <div className="bg-black/50 p-2 rounded-full backdrop-blur-sm">
@@ -158,7 +159,27 @@ export default function PersonalTab() {
           </div>
         </div>
 
-        {/* Coming Soon State for Posts/Saved */}
+        <div className="flex border-b border-neutral-800 mb-8">
+          <button
+            onClick={() => setActiveTab('posts')}
+            className={clsx(
+              "flex-1 py-4 text-sm font-medium transition-colors border-b-2",
+              activeTab === 'posts' ? "border-primary-500 text-primary-400" : "border-transparent text-neutral-500 hover:text-neutral-300"
+            )}
+          >
+            Posts
+          </button>
+          <button
+            onClick={() => setActiveTab('saved')}
+            className={clsx(
+              "flex-1 py-4 text-sm font-medium transition-colors border-b-2",
+              activeTab === 'saved' ? "border-primary-500 text-primary-400" : "border-transparent text-neutral-500 hover:text-neutral-300"
+            )}
+          >
+            Saved
+          </button>
+        </div>
+
         <div className="text-center py-20 bg-neutral-900/30 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
           <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-500/20">
             <Compass className="w-8 h-8 text-primary-400" />

@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit2, Ban, CheckCircle2 } from 'lucide-react';
+import { Search, Edit2, Ban, CheckCircle2, User as UserIcon } from 'lucide-react';
 import EditUserModal from './EditUserModal';
+import AdminUserProfileModal from './AdminUserProfileModal';
 
 export default function UsersTab() {
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
+  const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
 
   const fetchUsers = async () => {
     try {
@@ -153,6 +155,13 @@ export default function UsersTab() {
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
+                        onClick={() => setViewingProfileId(user.id)}
+                        className="p-2 text-blue-400 hover:text-blue-300 hover:bg-blue-400/10 rounded-lg transition-colors"
+                        title="View Profile"
+                      >
+                        <UserIcon className="w-5 h-5" />
+                      </button>
+                      <button 
                         onClick={() => setEditingUserId(user.id)}
                         className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
                         title="Edit User"
@@ -185,6 +194,13 @@ export default function UsersTab() {
         userId={editingUserId || ''}
         onUserUpdated={fetchUsers}
       />
+
+      {viewingProfileId && (
+        <AdminUserProfileModal
+          userId={viewingProfileId}
+          onClose={() => setViewingProfileId(null)}
+        />
+      )}
     </div>
   );
 }

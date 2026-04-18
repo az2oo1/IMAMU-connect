@@ -4,11 +4,19 @@ import { ShieldAlert, Mail, KeyRound, CheckCircle2 } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 
 export default function VerificationGuard({ children }: { children: React.ReactNode }) {
-  const { isVerified, verifyStudent } = useUser();
+  const { isVerified, verifyStudent, isAuthReady } = useUser();
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [step, setStep] = useState<'email' | 'code'>('email');
   const [error, setError] = useState('');
+
+  if (!isAuthReady) {
+    return (
+      <div className="flex-1 h-full flex items-center justify-center bg-neutral-950">
+        <div className="w-8 h-8 border-4 border-primary-500/20 border-t-primary-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   if (isVerified) {
     return <>{children}</>;

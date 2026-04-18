@@ -1,12 +1,14 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Map, BookOpen, Compass, Users, User, Settings, LogOut, X, Check, Newspaper, Shield, Tent, ChevronDown, MoreHorizontal, Calendar, Bookmark, Bell } from 'lucide-react';
+import { Map, BookOpen, Compass, Users, User, Settings, LogOut, X, Check, Newspaper, Shield, Tent, ChevronDown, MoreHorizontal, Calendar, Bookmark, Bell, MessageSquare } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useTheme } from '../ThemeContext';
 import { useUser } from '../contexts/UserContext';
+import { useSocket } from '../contexts/SocketContext';
 import { motion, AnimatePresence } from 'motion/react';
 import AuthModal from './AuthModal';
+import OptimizedImage from './OptimizedImage';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -23,6 +25,7 @@ export default function Layout() {
   const notificationsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
   const { isAuthenticated, user, logout } = useUser();
+  const { socket } = useSocket();
   const { navOrder, hiddenNavItems } = useTheme();
 
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -42,6 +45,20 @@ export default function Layout() {
       .catch(console.error);
     }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (socket) {
+      const handleNewNotification = (notification: any) => {
+        setNotifications(prev => [notification, ...prev]);
+      };
+
+      socket.on('new_notification', handleNewNotification);
+
+      return () => {
+        socket.off('new_notification', handleNewNotification);
+      };
+    }
+  }, [socket]);
 
   const handleOpenNotifications = () => {
     const willOpen = !isNotificationsOpen;
@@ -261,11 +278,11 @@ export default function Layout() {
                   onClick={() => setIsProfileOpen(!isProfileOpen)}
                   className="flex items-center gap-2 hover:bg-neutral-900 p-1.5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                 >
-                  <img 
+                  <OptimizedImage 
                     src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id || 'default'}/100/100`} 
                     alt="Profile" 
+                    variant="small"
                     className="w-8 h-8 rounded-full border border-neutral-800 object-cover"
-                    referrerPolicy="no-referrer"
                   />
                 </button>
 
@@ -295,6 +312,16 @@ export default function Layout() {
                         </button>
                         <button 
                           onClick={() => {
+                            navigate('/messages');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          Messages
+                        </button>
+                        <button 
+                          onClick={() => {
                             navigate('/saved');
                             setIsProfileOpen(false);
                           }}
@@ -313,6 +340,18 @@ export default function Layout() {
                           <Settings className="w-4 h-4" />
                           Settings
                         </button>
+                        {user?.role === 'ADMIN' && (
+                          <button 
+                            onClick={() => {
+                              navigate('/admin');
+                              setIsProfileOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
+                          >
+                            <Shield className="w-4 h-4" />
+                            Admin Dashboard
+                          </button>
+                        )}
                       </div>
                       <div className="p-1 border-t border-neutral-800">
                         <button 
@@ -412,7 +451,12 @@ export default function Layout() {
                     />
                   )}
                   <span className="relative z-10 flex flex-col items-center gap-1">
-                    <User className="w-5 h-5" />
+                    <OptimizedImage 
+                      src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id || 'default'}/100/100`} 
+                      alt="Profile" 
+                      variant="small"
+                      className="w-5 h-5 rounded-full border border-neutral-800 object-cover"
+                    />
                     <span className="text-[10px] font-medium">Profile</span>
                   </span>
                 </>

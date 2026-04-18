@@ -7,6 +7,8 @@ interface FormattedTextProps {
 }
 
 export default function FormattedText({ text, className = '' }: FormattedTextProps) {
+  if (!text) return null;
+  
   // Regex to match @username (alphanumeric and underscores)
   const mentionRegex = /(@[a-zA-Z0-9_]+)/g;
   
