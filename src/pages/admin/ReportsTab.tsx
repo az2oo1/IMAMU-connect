@@ -416,7 +416,7 @@ export default function ReportsTab() {
                                )}
                                {report.type === 'MESSAGE' && (
                                  <>
-                                   <button onClick={(e) => { e.stopPropagation(); navigate(`/messages?id=${report.contentLink?.split('=')[1]}`); }} className="w-full flex items-center justify-center gap-2 py-2 bg-primary-600/10 text-primary-400 hover:bg-primary-600/20 hover:text-primary-300 border border-primary-500/20 text-sm font-medium rounded-lg transition-colors">
+                                   <button onClick={(e) => { e.stopPropagation(); navigate(`${report.contentLink}&messageId=${report.contentId}`); }} className="w-full flex items-center justify-center gap-2 py-2 bg-primary-600/10 text-primary-400 hover:bg-primary-600/20 hover:text-primary-300 border border-primary-500/20 text-sm font-medium rounded-lg transition-colors">
                                      <MessageSquare className="w-4 h-4" /> Go to Chat
                                    </button>
                                    <button onClick={(e) => { e.stopPropagation(); handleAction(report, 'DELETE_MESSAGE'); }} className="w-full flex items-center justify-center gap-2 py-2 bg-red-500/10 text-red-400 hover:bg-red-500/20 border border-red-500/20 text-sm font-medium rounded-lg transition-colors">

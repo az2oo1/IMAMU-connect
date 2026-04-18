@@ -56,17 +56,25 @@ import { useSocket } from '../contexts/SocketContext';
 
 function ReportSummary({ id }: { id: string }) {
   const [report, setReport] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     fetch(`/api/reports/${id}`, {
       headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
     })
-    .then(res => res.json())
+    .then(async res => {
+      if (!res.ok) throw new Error('Failed to fetch report');
+      return res.json();
+    })
     .then(data => setReport(data.report))
-    .catch(console.error);
+    .catch(err => {
+      console.error(err);
+      setError('Could not load report.');
+    });
   }, [id]);
 
+  if (error) return <div className="p-4 text-xs italic text-red-500">{error}</div>;
   if (!report) return <div className="p-4 text-xs italic text-neutral-500">Loading report summary #{id.slice(0, 8)}...</div>;
 
   return (
@@ -200,7 +208,7 @@ export default function MessagesTab() {
 
   useEffect(() => {
     if (activeGroupId) {
-      if (messageCache[activeGroupId]) {
+      if (messageCache[activeGroupId] && !searchParams.get('messageId')) {
         setMessages(messageCache[activeGroupId]);
       } else {
         setMessages([]);
@@ -219,6 +227,16 @@ export default function MessagesTab() {
       prevScrollHeightRef.current = null;
     }
   }, [messages]);
+
+  useEffect(() => {
+    const messageId = searchParams.get('messageId');
+    if (messageId) {
+      const element = document.getElementById(`msg-${messageId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [searchParams, messages]);
 
   const fetchGroupMembers = async (groupId: string) => {
     try {
@@ -244,6 +262,12 @@ export default function MessagesTab() {
       if (cursor) {
         url += `&cursor=${cursor}`;
       }
+      if (isInitial) {
+        const msgId = searchParams.get('messageId');
+        if (msgId) {
+          url += `&targetMessageId=${msgId}`;
+        }
+      }
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -254,7 +278,8 @@ export default function MessagesTab() {
           prevScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
         }
 
-        const isSameAsCache = isInitial && messageCache[groupId] && JSON.stringify(messageCache[groupId]) === JSON.stringify(data.messages.slice(-50));
+        const msgId = searchParams.get('messageId');
+        const isSameAsCache = isInitial && !msgId && messageCache[groupId] && JSON.stringify(messageCache[groupId]) === JSON.stringify(data.messages.slice(-50));
 
         if (isSameAsCache) {
           setNextCursor(data.nextCursor);
@@ -270,12 +295,14 @@ export default function MessagesTab() {
             newMessages = [...data.messages, ...prev];
           }
           
-          const newCache = {
-            ...messageCache,
-            [groupId]: newMessages.slice(-50)
-          };
-          setMessageCache(newCache);
-          saveToCache(CACHE_KEYS.MESSAGES, newCache);
+          if (!msgId) {
+            const newCache = {
+              ...messageCache,
+              [groupId]: newMessages.slice(-50)
+            };
+            setMessageCache(newCache);
+            saveToCache(CACHE_KEYS.MESSAGES, newCache);
+          }
           
           return newMessages;
         });
@@ -283,7 +310,7 @@ export default function MessagesTab() {
         setNextCursor(data.nextCursor);
         setHasMoreMessages(data.hasMore);
         
-        if (isInitial) {
+        if (isInitial && !searchParams.get('messageId')) {
           setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
           }, 100);
@@ -831,7 +858,7 @@ export default function MessagesTab() {
                           </div>
                         </div>
 
-                        <div className={clsx(
+                        <div id={`msg-${msg.id}`} className={clsx(
                           "px-3 py-2 text-sm shadow-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
                           isMe 
                             ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
@@ -1311,8 +1338,15 @@ export default function MessagesTab() {
                         setReportReason('');
                         alert('Your report has been submitted. Thank you for helping keep our community safe.');
                       } else {
-                        const data = await res.json();
-                        alert(data.error || 'Failed to submit report. Please try again.');
+                        const errorText = await res.text();
+                        let errorMessage = 'Failed to submit report. Please try again.';
+                        try {
+                           const data = JSON.parse(errorText);
+                           errorMessage = data.error || errorMessage;
+                        } catch (e) {
+                           console.error("Non-JSON error response:", errorText);
+                        }
+                        alert(errorMessage);
                       }
                     } catch (error) {
                       console.error('Report error:', error);

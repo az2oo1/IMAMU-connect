@@ -773,7 +773,7 @@ async function startServer() {
   app.post('/api/courses/:id/files', authenticateToken, async (req: any, res) => {
     try {
       const courseId = req.params.id;
-      const { name, url, folderId, isAnonymous } = req.body;
+      const { name, url, folderId, isAnonymous, size } = req.body;
       
       // Check if user is admin of the course
       const enrollment = await prisma.enrollment.findFirst({
@@ -787,6 +787,7 @@ async function startServer() {
         data: {
           name,
           url,
+          size,
           courseId,
           folderId: folderId || null,
           status,
@@ -795,6 +796,38 @@ async function startServer() {
           approverId: isAdmin ? req.user.userId : null
         }
       });
+      
+      // Notify all course admins
+      try {
+        const uploader = isAnonymous ? null : await prisma.user.findUnique({ where: { id: req.user.userId } });
+        const uploaderName = isAnonymous ? 'A student' : (uploader?.username || 'Someone');
+        const courseAdmins = await prisma.enrollment.findMany({
+          where: { courseId, isAdmin: true, userId: { not: req.user.userId } }
+        });
+        const course = await prisma.course.findUnique({ where: { id: courseId } });
+
+        if (courseAdmins.length > 0) {
+          for (const admin of courseAdmins) {
+            const notification = await prisma.notification.create({
+              data: {
+                userId: admin.userId,
+                type: 'SYSTEM',
+                content: `${uploaderName} uploaded "${name}" in ${course?.code}.`,
+                link: `/academics?courseId=${courseId}&fileId=${file.id}`
+              }
+            });
+            if (io) {
+              const targetSocketId = connectedUsers.get(admin.userId);
+              if (targetSocketId) {
+                io.to(targetSocketId).emit('new_notification', notification);
+              }
+            }
+          }
+        }
+      } catch (notifyErr) {
+        console.error('Failed to send file notifications', notifyErr);
+      }
+
       res.json({ file });
     } catch (error) {
       res.status(500).json({ error: 'Failed to save file record' });
@@ -1303,7 +1336,7 @@ async function startServer() {
   app.get('/api/groups/:id/messages', authenticateToken, async (req: any, res) => {
     try {
       const groupId = req.params.id;
-      const { limit = 100, cursor } = req.query;
+      const { limit = 100, cursor, targetMessageId } = req.query;
       const take = parseInt(limit as string, 10);
 
       // Ensure user is member
@@ -1312,21 +1345,75 @@ async function startServer() {
       });
       if (!group) return res.status(403).json({ error: 'Not a member of this group' });
 
-      const messages = await prisma.message.findMany({
-        where: { groupId },
-        take: take,
-        skip: cursor ? 1 : 0,
-        cursor: cursor ? { id: cursor as string } : undefined,
-        include: {
-          author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
-          replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
-          deletedBy: { select: { id: true } }
-        },
-        orderBy: { createdAt: 'desc' }
-      });
+      let messages: any[] = [];
+      let hasMore = false;
 
-      // Reverse to get chronological order
-      messages.reverse();
+      if (targetMessageId) {
+        // Fetch surrounding context: up to 25 before and 25 after
+        const halfTake = Math.floor(take / 2);
+        
+        try {
+          const older = await prisma.message.findMany({
+            where: { groupId },
+            take: halfTake,
+            cursor: { id: targetMessageId as string },
+            orderBy: { createdAt: 'desc' },
+            include: {
+              author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+              replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+              deletedBy: { select: { id: true } }
+            }
+          });
+
+          const newer = await prisma.message.findMany({
+            where: { groupId },
+            take: halfTake,
+            skip: 1, // Skip the target message itself (already in older)
+            cursor: { id: targetMessageId as string },
+            orderBy: { createdAt: 'asc' },
+            include: {
+              author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+              replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+              deletedBy: { select: { id: true } }
+            }
+          });
+
+          older.reverse(); // Now chronological
+          messages = [...older, ...newer];
+          hasMore = older.length === halfTake; // Assume more history exists
+        } catch (e) {
+          // Fallback if targetMessageId is invalid / not found
+           messages = await prisma.message.findMany({
+            where: { groupId },
+            take: take,
+            skip: cursor ? 1 : 0,
+            cursor: cursor ? { id: cursor as string } : undefined,
+            include: {
+              author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+              replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+              deletedBy: { select: { id: true } }
+            },
+            orderBy: { createdAt: 'desc' }
+          });
+          messages.reverse();
+          hasMore = messages.length === take;
+        }
+      } else {
+        messages = await prisma.message.findMany({
+          where: { groupId },
+          take: take,
+          skip: cursor ? 1 : 0,
+          cursor: cursor ? { id: cursor as string } : undefined,
+          include: {
+            author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+            replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+            deletedBy: { select: { id: true } }
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+        messages.reverse();
+        hasMore = messages.length === take;
+      }
 
       // Filter out messages deleted for this user
       const filteredMessages = messages.map(msg => {
@@ -1341,7 +1428,7 @@ async function startServer() {
       res.json({ 
         messages: filteredMessages,
         nextCursor: messages.length > 0 ? messages[0].id : null,
-        hasMore: messages.length === take
+        hasMore
       });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch messages' });
@@ -2020,11 +2107,11 @@ async function startServer() {
           } else if (r.type === 'MESSAGE' && r.contentId) {
             const msg = await prisma.message.findUnique({ 
               where: { id: r.contentId },
-              include: { author: { select: { name: true, username: true } } }
+              include: { author: { select: { name: true, username: true } }, group: { select: { isDirectMessage: true } } }
             });
             if (msg) {
               contentDetailsStr = `"${msg.content}" - ${msg.author.name || msg.author.username}`;
-              contentLink = `/messages?id=${msg.groupId}`;
+              contentLink = msg.group?.isDirectMessage ? `/messages?id=${msg.groupId}` : `/groups?id=${msg.groupId}`;
             }
           }
         } catch (e) {
@@ -2230,7 +2317,7 @@ async function startServer() {
       if (report.type === 'MESSAGE' && report.contentId) {
         const msg = await prisma.message.findUnique({
           where: { id: report.contentId },
-          include: { author: { select: { name: true, username: true, avatarUrl: true } } }
+          include: { author: { select: { name: true, username: true, avatarUrl: true } }, group: { select: { isDirectMessage: true } } }
         });
         if (msg) contentDetails = msg;
       } else if (report.type === 'FILE' && report.contentId) {
@@ -2298,41 +2385,41 @@ async function startServer() {
     }
   });
 
-  // Backup database and files
-  app.get('/api/admin/backup', requireAdmin, (req, res) => {
-    const timestamp = new Date().toISOString().split('T')[0];
-    const filename = `campushub-full-backup-${timestamp}.zip`;
-    
-    res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
-
-    const archive = archiver('zip', {
-      zlib: { level: 9 } // Sets the compression level.
-    });
-
-    archive.on('error', (err) => {
-      console.error('Backup archive error:', err);
-      if (!res.headersSent) {
-        res.status(500).json({ error: 'Failed to generate backup' });
-      }
-    });
-
-    archive.pipe(res);
-
-    // Append the database file
-    const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
-    if (fs.existsSync(dbPath)) {
-      archive.file(dbPath, { name: 'database/dev.db' });
-    }
-
-    // Append the uploads directory (contains all user files, academic files, news photos, etc.)
-    const uploadsPath = path.join(process.cwd(), 'uploads');
-    if (fs.existsSync(uploadsPath)) {
-      archive.directory(uploadsPath, 'uploads');
-    }
-
-    archive.finalize();
-  });
+  // Backup database and files (DISABLED to prevent DB corruption)
+  // app.get('/api/admin/backup', requireAdmin, (req, res) => {
+  //   const timestamp = new Date().toISOString().split('T')[0];
+  //   const filename = `campushub-full-backup-${timestamp}.zip`;
+  //   
+  //   res.setHeader('Content-Type', 'application/zip');
+  //   res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+  //
+  //   const archive = archiver('zip', {
+  //     zlib: { level: 9 } // Sets the compression level.
+  //   });
+  //
+  //   archive.on('error', (err) => {
+  //     console.error('Backup archive error:', err);
+  //     if (!res.headersSent) {
+  //       res.status(500).json({ error: 'Failed to generate backup' });
+  //     }
+  //   });
+  //
+  //   archive.pipe(res);
+  //
+  //   // Append the database file
+  //   const dbPath = path.join(process.cwd(), 'prisma', 'dev.db');
+  //   if (fs.existsSync(dbPath)) {
+  //     archive.file(dbPath, { name: 'database/dev.db' });
+  //   }
+  //
+  //   // Append the uploads directory (contains all user files, academic files, news photos, etc.)
+  //   const uploadsPath = path.join(process.cwd(), 'uploads');
+  //   if (fs.existsSync(uploadsPath)) {
+  //     archive.directory(uploadsPath, 'uploads');
+  //   }
+  //
+  //   archive.finalize();
+  // });
 
   // Catch-all for undefined API routes to prevent falling through to SPA fallback
   app.all('/api/*', (req, res) => {

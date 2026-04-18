@@ -115,13 +115,6 @@ export default function ProfilePopover({ children, username, user: initialUser }
     <>
       <span 
         ref={triggerRef} 
-        onMouseEnter={() => {
-           if (timeoutRef.current) clearTimeout(timeoutRef.current);
-           setIsOpen(true);
-        }}
-        onMouseLeave={() => {
-           timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
-        }}
         onClick={(e) => {
           e.stopPropagation();
           setIsOpen(!isOpen);

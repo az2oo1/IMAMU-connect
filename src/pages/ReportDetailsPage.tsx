@@ -143,7 +143,7 @@ export default function ReportDetailsPage() {
                     <span className="text-[10px] font-bold uppercase tracking-widest text-neutral-500">Reported Content Details</span>
                     {report.type === 'MESSAGE' && (
                        <button 
-                        onClick={() => navigate(`/messages?id=${report.contentDetails?.groupId}`)}
+                        onClick={() => navigate(`${report.contentDetails?.group?.isDirectMessage ? '/messages' : '/groups'}?id=${report.contentDetails?.groupId}&messageId=${report.contentId}`)}
                         className="text-[10px] font-bold text-primary-400 hover:text-primary-300 transition-colors uppercase tracking-widest"
                        >
                         View Context

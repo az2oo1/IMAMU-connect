@@ -142,6 +142,7 @@ model AcademicFile {
   uploader    User?    @relation("FileUploader", fields: [uploaderId], references: [id])
   approverId  String?
   approver    User?    @relation("FileApprover", fields: [approverId], references: [id])
+  size        Int?
   createdAt   DateTime @default(now())
   order       Int      @default(0)
 }

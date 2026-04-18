@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, Camera } from 'lucide-react';
+import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, Camera, ShieldAlert } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -70,6 +70,9 @@ export default function GroupsTab() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [reportingMessage, setReportingMessage] = useState<any | null>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [isSubmittingReport, setIsSubmittingReport] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState('');
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
   const [joinSearchQuery, setJoinSearchQuery] = useState('');
@@ -154,7 +157,7 @@ export default function GroupsTab() {
 
   useEffect(() => {
     if (activeGroupId) {
-      if (messageCache[activeGroupId]) {
+      if (messageCache[activeGroupId] && !searchParams.get('messageId')) {
         setMessages(messageCache[activeGroupId]);
       } else {
         setMessages([]);
@@ -173,6 +176,16 @@ export default function GroupsTab() {
       prevScrollHeightRef.current = null;
     }
   }, [messages]);
+
+  useEffect(() => {
+    const messageId = searchParams.get('messageId');
+    if (messageId) {
+      const element = document.getElementById(`msg-${messageId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
+  }, [searchParams, messages]);
 
   const fetchGroupMembers = async (groupId: string) => {
     try {
@@ -198,6 +211,12 @@ export default function GroupsTab() {
       if (cursor) {
         url += `&cursor=${cursor}`;
       }
+      if (isInitial) {
+        const msgId = searchParams.get('messageId');
+        if (msgId) {
+          url += `&targetMessageId=${msgId}`;
+        }
+      }
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -208,7 +227,8 @@ export default function GroupsTab() {
           prevScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
         }
 
-        const isSameAsCache = isInitial && messageCache[groupId] && JSON.stringify(messageCache[groupId]) === JSON.stringify(data.messages.slice(-50));
+        const msgId = searchParams.get('messageId');
+        const isSameAsCache = isInitial && !msgId && messageCache[groupId] && JSON.stringify(messageCache[groupId]) === JSON.stringify(data.messages.slice(-50));
 
         if (isSameAsCache) {
           setNextCursor(data.nextCursor);
@@ -224,12 +244,14 @@ export default function GroupsTab() {
             newMessages = [...data.messages, ...prev];
           }
           
-          const newCache = {
-            ...messageCache,
-            [groupId]: newMessages.slice(-50)
-          };
-          setMessageCache(newCache);
-          saveToCache(CACHE_KEYS.MESSAGES + '_groups', newCache);
+          if (!msgId) {
+            const newCache = {
+              ...messageCache,
+              [groupId]: newMessages.slice(-50)
+            };
+            setMessageCache(newCache);
+            saveToCache(CACHE_KEYS.MESSAGES + '_groups', newCache);
+          }
           
           return newMessages;
         });
@@ -237,7 +259,7 @@ export default function GroupsTab() {
         setNextCursor(data.nextCursor);
         setHasMoreMessages(data.hasMore);
         
-        if (isInitial) {
+        if (isInitial && !searchParams.get('messageId')) {
           setTimeout(() => {
             messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
           }, 100);
@@ -834,7 +856,7 @@ export default function GroupsTab() {
                           </div>
                         </div>
 
-                        <div className={clsx(
+                        <div id={`msg-${msg.id}`} className={clsx(
                           "px-3 py-2 text-sm shadow-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
                           isMe 
                             ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
@@ -1336,6 +1358,130 @@ export default function GroupsTab() {
         )}
       </AnimatePresence>
 
+      {/* Report Message Modal */}
+      <AnimatePresence>
+        {reportingMessage && (
+          <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => { setReportingMessage(null); setReportReason(''); }}
+              className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-lg bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl relative z-10 overflow-hidden"
+            >
+              <div className="p-6 border-b border-neutral-800">
+                <h2 className="text-xl font-bold text-white">Report Message</h2>
+                <p className="text-sm text-neutral-400 mt-1">Help us keep the community safe by reporting inappropriate content.</p>
+              </div>
+
+              <div className="p-6">
+                <div className="bg-neutral-950 p-4 rounded-xl mb-6">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block mb-2">Message to report</span>
+                  <div className="flex items-center gap-3 mb-2">
+                    <img 
+                      src={reportingMessage.author?.avatarUrl || `https://picsum.photos/seed/${reportingMessage.authorId}/50/50`} 
+                      className="w-6 h-6 rounded-full object-cover" 
+                      alt=""
+                    />
+                    <span className="text-xs font-bold text-neutral-300">{reportingMessage.author?.name || 'User'}</span>
+                  </div>
+                  <p className="text-sm text-neutral-200 line-clamp-3 italic">"{reportingMessage.content}"</p>
+                </div>
+
+                <div className="space-y-3">
+                  <label className="text-xs font-bold text-neutral-400 uppercase tracking-wider block">Why are you reporting this message?</label>
+                  <textarea 
+                    autoFocus
+                    value={reportReason}
+                    onChange={(e) => setReportReason(e.target.value)}
+                    placeholder="Provide details about the issue..."
+                    className="w-full h-32 bg-neutral-950 border border-neutral-800 rounded-xl p-4 text-sm text-neutral-200 focus:outline-none focus:border-primary-500/50 transition-all resize-none placeholder:text-neutral-700"
+                  />
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {['Harassment', 'Spam', 'Hate Speech', 'Inappropriate Content', 'Self-Harm'].map(tag => (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setReportReason(prev => prev ? `${prev}, ${tag}` : tag)}
+                        className="px-3 py-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-400 text-[10px] font-bold rounded-full transition-colors border border-neutral-700"
+                      >
+                        {tag}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 bg-neutral-900/50 border-t border-neutral-800 flex gap-3">
+                <button 
+                  disabled={isSubmittingReport}
+                  onClick={() => {
+                    setReportingMessage(null);
+                    setReportReason('');
+                  }}
+                  className="flex-1 py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button 
+                  disabled={isSubmittingReport || !reportReason.trim()}
+                  onClick={async () => {
+                    setIsSubmittingReport(true);
+                    try {
+                      const token = localStorage.getItem('token');
+                      const res = await fetch('/api/reports', {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          Authorization: `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                          reportedId: reportingMessage.authorId || reportingMessage.author?.id,
+                          type: 'MESSAGE',
+                          contentId: reportingMessage.id,
+                          reason: reportReason
+                        })
+                      });
+
+                      if (res.ok) {
+                        setReportingMessage(null);
+                        setReportReason('');
+                        alert('Your report has been submitted. Thank you for helping keep our community safe.');
+                      } else {
+                        const errorText = await res.text();
+                        let errorMessage = 'Failed to submit report. Please try again.';
+                        try {
+                           const data = JSON.parse(errorText);
+                           errorMessage = data.error || errorMessage;
+                        } catch (e) {
+                           console.error("Non-JSON error response:", errorText);
+                        }
+                        alert(errorMessage);
+                      }
+                    } catch (error) {
+                      console.error('Report error:', error);
+                      alert('Failed to submit report. Please check your connection.');
+                    } finally {
+                      setIsSubmittingReport(false);
+                    }
+                  }}
+                  className="flex-1 py-3 bg-primary-600 hover:bg-primary-500 text-white rounded-xl font-bold text-sm transition-all disabled:opacity-50"
+                >
+                  Submit Report
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Message Options Modal */}
       {activeMessageOptions && createPortal(
         <div 
           className="fixed inset-0 z-[99998]" 
@@ -1364,6 +1510,15 @@ export default function GroupsTab() {
                 className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
               >
                 <Reply className="w-4 h-4" /> Reply
+              </button>
+              <button 
+                onClick={() => { 
+                   setReportingMessage(activeMessageOptions.msg);
+                   setActiveMessageOptions(null); 
+                }}
+                className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-red-400 hover:text-red-300 text-sm rounded-lg transition-colors flex items-center gap-3"
+              >
+                <ShieldAlert className="w-4 h-4" /> Report message
               </button>
               {activeMessageOptions.isMe && !activeMessageOptions.isDeleted && (
                 <>

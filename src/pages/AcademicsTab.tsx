@@ -43,6 +43,7 @@ function SortableFolderItem({ folder, onClick, isAdmin, activeDropdown, setActiv
 
   return (
     <div 
+      id={`folder-${folder.id}`}
       ref={setNodeRef} 
       style={style} 
       {...attributes} 
@@ -105,6 +106,7 @@ function SortableFileItem({ file, isAdmin, activeDropdown, setActiveDropdown, se
 
   return (
     <div 
+      id={`file-${file.id}`}
       ref={setNodeRef} 
       style={style2} 
       {...attributes} 
@@ -208,7 +210,7 @@ function SortableFileItem({ file, isAdmin, activeDropdown, setActiveDropdown, se
         
         <div className="mt-4 pt-4 border-t border-neutral-800 flex items-center justify-between">
           <div className="text-xs text-neutral-400 flex items-center gap-1.5">
-            {file.size || 'Unknown size'}
+            {file.size ? formatBytes(file.size) : 'Unknown size'}
           </div>
           <a 
             draggable={false} 
@@ -245,13 +247,44 @@ function BreadcrumbDroppable({ id, children, isOver, onSelect, isActive }: any) 
   );
 }
 
+const formatBytes = (bytes: number, decimals = 2) => {
+  if (bytes === 0) return '0 Bytes';
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+};
+
 export default function AcademicsTab() {
   const [search, setSearch] = useState('');
-  const [activeCourseId, setActiveCourseId] = useState('');
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const fileIdParam = searchParams.get('fileId');
+  const [activeCourseId, setActiveCourseIdState] = useState(searchParams.get('courseId') || '');
   const [highlightedFileId, setHighlightedFileId] = useState<string | null>(null);
-  const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
+  
+  const parsedFolderId = searchParams.get('folderId');
+  const [currentFolderId, setCurrentFolderIdState] = useState<string | null>(parsedFolderId === 'null' ? null : parsedFolderId);
+
+  const setActiveCourseId = (id: string) => {
+    setActiveCourseIdState(id);
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      if (id) p.set('courseId', id);
+      else p.delete('courseId');
+      return p;
+    }, { replace: true });
+  };
+
+  const setCurrentFolderId = (id: string | null) => {
+    setCurrentFolderIdState(id);
+    setSearchParams(prev => {
+      const p = new URLSearchParams(prev);
+      if (id) p.set('folderId', id);
+      else p.delete('folderId');
+      return p;
+    }, { replace: true });
+  };
   const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddCourseModal, setShowAddCourseModal] = useState(false);
@@ -302,9 +335,13 @@ export default function AcademicsTab() {
       .then(data => {
         if (data.file) {
           setActiveCourseId(data.file.courseId);
-          if (data.file.folderId) setCurrentFolderId(data.file.folderId);
+          setCurrentFolderId(data.file.folderId || null);
           setHighlightedFileId(data.file.id);
-          // Scroll to the file if needed, or just let the render handle it
+          
+          setTimeout(() => {
+            const el = document.getElementById(`file-${data.file.id}`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }, 500);
         }
       })
       .catch(console.error);
@@ -451,7 +488,8 @@ export default function AcademicsTab() {
               name: file.name,
               url,
               folderId: currentFolderId,
-              isAnonymous
+              isAnonymous,
+              size: file.size
             })
           });
           
@@ -459,8 +497,10 @@ export default function AcademicsTab() {
             const errBody = await response.text();
             throw new Error(`Failed to create file record: ${response.status} ${errBody}`);
           }
+          await response.json();
         } catch (e) {
           console.error(`Failed to upload ${file.name}`, e);
+          throw e; // Important: throw to be caught by outer catch
         }
       }
       
@@ -476,6 +516,7 @@ export default function AcademicsTab() {
       }, 800);
     } catch (error) {
       console.error('Upload failed', error);
+      alert('Upload failed. Please check your network or try again.');
     } finally {
       setIsUploading(false);
     }
@@ -1041,7 +1082,11 @@ export default function AcademicsTab() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                     key={file.id} 
-                    className="bg-neutral-900 border border-yellow-500/30 rounded-xl p-4 hover:border-yellow-500/50 transition-colors group relative overflow-hidden"
+                    id={`file-${file.id}`}
+                    className={clsx(
+                      "bg-neutral-900 border rounded-xl p-4 transition-colors group relative overflow-hidden",
+                      file.isHighlighted ? "border-primary-500 ring-2 ring-primary-500/50 shadow-[0_0_15px_rgba(var(--primary-rgb),0.3)]" : "border-yellow-500/30 hover:border-yellow-500/50"
+                    )}
                   >
                     <div className="absolute top-0 left-0 w-1 h-full bg-yellow-500/50" />
                     <div className="flex justify-between items-start mb-4 pl-2">
@@ -1092,7 +1137,7 @@ export default function AcademicsTab() {
                     
                     <div className="mt-4 pt-4 border-t border-neutral-800 flex items-center justify-between pl-2">
                       <div className="text-xs text-neutral-400 flex items-center gap-1.5">
-                        {file.size || 'Unknown size'}
+                        {file.size ? formatBytes(file.size) : 'Unknown size'}
                       </div>
                       <a href={file.url} target="_blank" rel="noreferrer" className="text-primary-400 hover:text-primary-300 bg-primary-500/10 hover:bg-primary-500/20 p-1.5 rounded-md transition-colors">
                         <Download className="w-4 h-4" />
