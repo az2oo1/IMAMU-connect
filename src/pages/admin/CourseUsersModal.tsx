@@ -35,9 +35,9 @@ export default function CourseUsersModal({ courseId, courseName, onClose }: Cour
   }, [courseId]);
 
   const filteredUsers = users.filter(user => 
-    user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.studentEmail?.toLowerCase().includes(searchQuery.toLowerCase())
+    user?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    user?.username?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    user?.studentEmail?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   return (

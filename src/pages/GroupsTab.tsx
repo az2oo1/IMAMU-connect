@@ -32,23 +32,33 @@ type Attachment = {
 };
 
 type Message = {
-  id: number;
+  id: string;
   sender: string;
   text: string;
+  content: string; // prisma uses content
   time: string;
+  createdAt: string;
   isMe: boolean;
-  replyTo?: number;
-  attachment?: Attachment;
+  authorId?: string;
+  author?: {
+    id: string;
+    name: string;
+    username: string;
+    avatarUrl?: string;
+  };
+  replyToId?: string;
+  replyTo?: {
+    id: string;
+    content: string;
+    author: { name: string };
+  };
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentSize?: number;
+  attachmentType?: string;
   deletedForMe?: boolean;
   deletedForAll?: boolean;
 };
-
-const MESSAGES: Message[] = [
-  { id: 1, sender: 'Student_842', text: 'Did anyone understand the last lecture on pointers?', time: '10:42 AM', isMe: false },
-  { id: 2, sender: 'Student_105', text: 'Yeah, it was a bit confusing. I found a good YouTube video about it though.', time: '10:45 AM', isMe: false },
-  { id: 3, sender: 'Me', text: 'Could you share the link? I\'m completely lost.', time: '10:46 AM', isMe: true },
-  { id: 4, sender: 'Student_105', text: 'Sure, here it is: youtube.com/watch?v=...', time: '10:47 AM', isMe: false },
-];
 
 import { useUser } from '../contexts/UserContext';
 import { useSocket } from '../contexts/SocketContext';
@@ -57,10 +67,26 @@ export default function GroupsTab() {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
   const [messageCache, setMessageCache] = useState<Record<string, any[]>>(getFromCache(CACHE_KEYS.MESSAGES + '_groups', {}));
-  const [hasMoreMessages, setHasMoreMessages] = useState(true);
+  const [hasMoreOlder, setHasMoreOlder] = useState(true);
+  const [hasMoreNewer, setHasMoreNewer] = useState(false);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [nextCursorOlder, setNextCursorOlder] = useState<string | null>(null);
+  const [nextCursorNewer, setNextCursorNewer] = useState<string | null>(null);
+  const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
+  const [activePinnedIndex, setActivePinnedIndex] = useState(0);
+  const [editingMessage, setEditingMessage] = useState<any | null>(null);
+  const [pinPromptMessage, setPinPromptMessage] = useState<{ id: string } | null>(null);
+  const [pinDurationInput, setPinDurationInput] = useState('24');
   const prevScrollHeightRef = useRef<number | null>(null);
+  const isInitialLoadRef = useRef(true);
+  const hasMoreNewerRef = useRef(false);
+  const isNearBottomRef = useRef(true);
+  const isAutoScrollingRef = useRef(false);
+
+  useEffect(() => {
+    hasMoreNewerRef.current = hasMoreNewer;
+  }, [hasMoreNewer]);
+
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
   const [activeMessageOptions, setActiveMessageOptions] = useState<{ id: string, rect: DOMRect, isMe: boolean, isDeleted: boolean, msg: any } | null>(null);
@@ -79,6 +105,7 @@ export default function GroupsTab() {
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [unreadMentions, setUnreadMentions] = useState<string[]>([]);
   
   // Create Group State
   const [newGroupName, setNewGroupName] = useState('');
@@ -89,7 +116,7 @@ export default function GroupsTab() {
   const [allCourses, setAllCourses] = useState<any[]>([]);
 
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useUser();
   const { socket } = useSocket();
   const dragScroll = useDraggableScroll<HTMLDivElement>();
@@ -97,6 +124,7 @@ export default function GroupsTab() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const unreadCountRef = useRef<number>(0);
 
   useEffect(() => {
     fetchGroups();
@@ -107,6 +135,23 @@ export default function GroupsTab() {
       socket.emit('join_group', activeGroupId);
 
       const handleNewMessage = (data: { message: any }) => {
+        const isMentioned = user?.username && data?.message?.content?.includes(`@${user.username}`) && data?.message?.authorId !== user?.id;
+        if (isMentioned) {
+          setUnreadMentions(prev => {
+            if (!(prev || []).includes(data.message.id)) {
+              return [...(prev || []), data.message.id];
+            }
+            return prev || [];
+          });
+        }
+
+        if (hasMoreNewerRef.current) {
+          // If we are looking at historical messages, do not pollute the timeline.
+          // The down arrow will handle fetching it when the user jumps to the present.
+          setHasMoreNewer(true);
+          return;
+        }
+
         setMessages(prev => {
           // Check if message already exists (e.g. from optimistic update)
           if (prev.some(m => m.id === data.message.id)) {
@@ -130,15 +175,42 @@ export default function GroupsTab() {
           }
           return m;
         }));
+        setPinnedMessages(prev => prev.filter(m => m.id !== data.messageId));
+      };
+
+      const handleMessageUpdated = (data: { messageId: string, message: any }) => {
+        setMessages(prev => prev.map(m => m.id === data.messageId ? data.message : m));
+        
+        const now = new Date();
+        setPinnedMessages(prev => {
+           const existingIndex = prev.findIndex(m => m.id === data.messageId);
+           const isPinned = data.message.pinnedUntil && new Date(data.message.pinnedUntil) > now;
+           if (isPinned) {
+              if (existingIndex >= 0) {
+                 const updated = [...prev];
+                 updated[existingIndex] = data.message;
+                 return updated;
+              } else {
+                 return [...prev, data.message];
+              }
+           } else {
+              if (existingIndex >= 0) {
+                 return prev.filter(m => m.id !== data.messageId);
+              }
+              return prev;
+           }
+        });
       };
 
       socket.on('new_message', handleNewMessage);
       socket.on('message_deleted', handleMessageDeleted);
+      socket.on('message_updated', handleMessageUpdated);
 
       return () => {
         socket.emit('leave_group', activeGroupId);
         socket.off('new_message', handleNewMessage);
         socket.off('message_deleted', handleMessageDeleted);
+        socket.off('message_updated', handleMessageUpdated);
       };
     }
   }, [socket, activeGroupId]);
@@ -157,17 +229,27 @@ export default function GroupsTab() {
 
   useEffect(() => {
     if (activeGroupId) {
+      isNearBottomRef.current = true;
+
       if (messageCache[activeGroupId] && !searchParams.get('messageId')) {
         setMessages(messageCache[activeGroupId]);
+        isInitialLoadRef.current = false;
       } else {
         setMessages([]);
+        isInitialLoadRef.current = true;
       }
-      setHasMoreMessages(true);
-      setNextCursor(null);
-      fetchMessages(activeGroupId, true);
+      setHasMoreOlder(true);
+      setHasMoreNewer(false);
+      setNextCursorOlder(null);
+      setNextCursorNewer(null);
+      setUnreadMentions([]);
+      
+      const targetId = searchParams.get('messageId');
+      
+      fetchMessages(activeGroupId, 'initial', null, targetId || undefined);
       fetchGroupMembers(activeGroupId);
     }
-  }, [activeGroupId]);
+  }, [activeGroupId, searchParams.get('messageId')]);
 
   useEffect(() => {
     if (prevScrollHeightRef.current !== null && messagesContainerRef.current) {
@@ -177,12 +259,24 @@ export default function GroupsTab() {
     }
   }, [messages]);
 
+  const scrolledToMessageRef = useRef<string | null>(null);
+
   useEffect(() => {
     const messageId = searchParams.get('messageId');
-    if (messageId) {
+    if (!messageId) {
+      scrolledToMessageRef.current = null;
+      return;
+    }
+    
+    if (messageId && scrolledToMessageRef.current !== messageId) {
       const element = document.getElementById(`msg-${messageId}`);
       if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        isAutoScrollingRef.current = true;
+        element.scrollIntoView({ behavior: 'auto', block: 'center' });
+        scrolledToMessageRef.current = messageId;
+        setTimeout(() => {
+            isAutoScrollingRef.current = false;
+        }, 500);
       }
     }
   }, [searchParams, messages]);
@@ -202,73 +296,118 @@ export default function GroupsTab() {
     }
   };
 
-  const fetchMessages = async (groupId: string, isInitial = false, cursor: string | null = null) => {
+  const isFetchingHistoryRef = useRef(false);
+
+  const fetchMessages = async (groupId: string, direction: 'initial' | 'older' | 'newer' = 'initial', cursor: string | null = null, targetMessageId?: string) => {
     if (isLoadingMessages) return;
     setIsLoadingMessages(true);
+    if (direction === 'older' || direction === 'newer') {
+        isFetchingHistoryRef.current = true;
+    }
+    
     try {
       const token = localStorage.getItem('token');
-      let url = `/api/groups/${groupId}/messages?limit=100`;
-      if (cursor) {
-        url += `&cursor=${cursor}`;
+      let url = `/api/groups/${groupId}/messages?limit=50`;
+      
+      if (targetMessageId && direction === 'initial') {
+        url += `&targetMessageId=${targetMessageId}`;
+      } else if (cursor) {
+        url += `&cursor=${cursor}&direction=${direction}`;
       }
-      if (isInitial) {
-        const msgId = searchParams.get('messageId');
-        if (msgId) {
-          url += `&targetMessageId=${msgId}`;
-        }
-      }
+
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      
       if (res.ok) {
         const data = await res.json();
         
-        if (!isInitial && messagesContainerRef.current) {
+        if (direction === 'older' && messagesContainerRef.current) {
           prevScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
         }
 
-        const msgId = searchParams.get('messageId');
-        const isSameAsCache = isInitial && !msgId && messageCache[groupId] && JSON.stringify(messageCache[groupId]) === JSON.stringify(data.messages.slice(-50));
-
-        if (isSameAsCache) {
-          setNextCursor(data.nextCursor);
-          setHasMoreMessages(data.hasMore);
-          return;
-        }
-
         setMessages(prev => {
-          let newMessages;
-          if (isInitial) {
-            newMessages = data.messages;
+          let newMessages: any[] = [];
+          const incomingMessages = data.messages || [];
+          
+          if (direction === 'initial') {
+            newMessages = incomingMessages;
+          } else if (direction === 'older') {
+            // Filter duplicates
+            const existingIds = new Set(prev.map(m => m.id));
+            const uniqueNew = incomingMessages.filter((m: any) => !existingIds.has(m.id));
+            newMessages = [...uniqueNew, ...prev];
           } else {
-            newMessages = [...data.messages, ...prev];
+            // direction === 'newer'
+            const existingIds = new Set(prev.map(m => m.id));
+            const uniqueNew = incomingMessages.filter((m: any) => !existingIds.has(m.id));
+            newMessages = [...prev, ...uniqueNew];
           }
           
-          if (!msgId) {
-            const newCache = {
-              ...messageCache,
-              [groupId]: newMessages.slice(-50)
-            };
-            setMessageCache(newCache);
-            saveToCache(CACHE_KEYS.MESSAGES + '_groups', newCache);
+          // Cache last 50 only if we are at the bottom
+          if (!data.hasMoreNewer && !searchParams.get('messageId')) {
+            setMessageCache(prevCache => {
+                const newCache = {
+                    ...prevCache,
+                    [groupId]: newMessages.slice(-50)
+                };
+                saveToCache(CACHE_KEYS.MESSAGES + '_groups', newCache);
+                return newCache;
+            });
           }
           
           return newMessages;
         });
+
+        if (data.pinnedMessages) {
+            setPinnedMessages(data.pinnedMessages);
+        }
         
-        setNextCursor(data.nextCursor);
-        setHasMoreMessages(data.hasMore);
+        if (direction === 'initial') {
+          setNextCursorOlder(data.nextCursorOlder);
+          setNextCursorNewer(data.nextCursorNewer);
+          setHasMoreOlder(data.hasMoreOlder);
+          setHasMoreNewer(data.hasMoreNewer);
+        } else if (direction === 'older') {
+          setNextCursorOlder(data.nextCursorOlder);
+          setHasMoreOlder(data.hasMoreOlder);
+        } else if (direction === 'newer') {
+          setNextCursorNewer(data.nextCursorNewer);
+          setHasMoreNewer(data.hasMoreNewer);
+        }
         
-        if (isInitial && !searchParams.get('messageId')) {
+        if (direction === 'initial') {
           setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
-          }, 100);
+            if (targetMessageId) {
+              const element = document.getElementById(`msg-${targetMessageId}`);
+              if (element) {
+                isAutoScrollingRef.current = true;
+                element.scrollIntoView({ behavior: 'auto', block: 'center' });
+                setTimeout(() => {
+                    isAutoScrollingRef.current = false;
+                }, 500);
+              }
+            } else {
+              isAutoScrollingRef.current = true;
+              messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+              setTimeout(() => {
+                  isAutoScrollingRef.current = false;
+              }, 500);
+            }
+            // Allow framerate to settle before enabling animations
+            setTimeout(() => {
+                isInitialLoadRef.current = false;
+            }, 100);
+          }, 50);
         }
       }
     } catch (error) {
       console.error('Failed to fetch messages', error);
     } finally {
       setIsLoadingMessages(false);
+      setTimeout(() => {
+          isFetchingHistoryRef.current = false;
+      }, 100);
     }
   };
 
@@ -383,22 +522,64 @@ export default function GroupsTab() {
     if (!messagesContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     
-    // Show button if we are more than 100px away from the bottom
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setShowScrollButton(!isNearBottom);
+    // Clear visible mentions
+    if (unreadMentions.length > 0) {
+      unreadMentions.forEach(id => {
+        const el = document.getElementById(`msg-${id}`);
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const containerRect = messagesContainerRef.current!.getBoundingClientRect();
+          if (rect.top >= containerRect.top && rect.bottom <= containerRect.bottom) {
+            setUnreadMentions(prev => prev.filter(mId => mId !== id));
+          }
+        }
+      });
+    }
+
+    // Show button if we are more than 300px away from the bottom or have newer messages to load
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+    
+    if (!isAutoScrollingRef.current) {
+        isNearBottomRef.current = isNearBottom;
+    }
+    
+    setShowScrollButton(!isNearBottom || hasMoreNewer);
+    
+    // Automatically release the scroll locker if we have physically naturally reached the bottom.
+    if (isNearBottom) {
+        isAutoScrollingRef.current = false;
+    }
     
     if (activeMessageOptions) {
       setActiveMessageOptions(null);
     }
     
     // Load more messages when scrolling near top
-    if (scrollTop < 100 && hasMoreMessages && !isLoadingMessages && nextCursor) {
-      fetchMessages(activeGroupId, false, nextCursor);
+    if (scrollTop < 100 && hasMoreOlder && !isLoadingMessages && nextCursorOlder) {
+      fetchMessages(activeGroupId, 'older', nextCursorOlder);
+    }
+
+    // Load more messages when scrolling near bottom
+    if (scrollHeight - scrollTop - clientHeight < 100 && hasMoreNewer && !isLoadingMessages && nextCursorNewer) {
+      fetchMessages(activeGroupId, 'newer', nextCursorNewer);
     }
   };
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    isAutoScrollingRef.current = true;
+    if (searchParams.has('messageId')) {
+      // The useEffect will handle the fetch when the query param clears
+      setSearchParams({ id: activeGroupId });
+    } else {
+      if (hasMoreNewer) {
+        fetchMessages(activeGroupId, 'initial');
+      } else {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        setTimeout(() => {
+            isAutoScrollingRef.current = false;
+        }, 500);
+      }
+    }
   };
 
   // Auto-resize textarea
@@ -409,19 +590,46 @@ export default function GroupsTab() {
     }
   }, [message]);
 
+  const lastMessageIdRef = useRef<string | null>(null);
+
   // Scroll to bottom when new message is added
   useEffect(() => {
-    if (!messagesContainerRef.current) return;
+    if (!messagesContainerRef.current || messages.length === 0) return;
+    
+    // Only auto-scroll if the actual last message changed (i.e. a newly received/sent message at the end)
+    const lastMsg = messages[messages.length - 1];
+    const prevLastId = lastMessageIdRef.current;
+    lastMessageIdRef.current = lastMsg.id;
+    
+    // If we just loaded history (last message didn't change), do not auto-scroll
+    if (prevLastId === lastMsg.id) return;
+    if (isInitialLoadRef.current) return;
+    
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     
-    // Determine if we should auto-scroll
-    const wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+    // Determine if we should auto-scroll. 
+    // ONLY auto-scroll if user was already at the bottom when the new message arrived.
+    // We use the ref that tracks scroll state *before* the message was injected
+    // (We also check if the new message is an optimistic pending message to guarantee we scroll for our own sends)
+    const wasAtBottom = isNearBottomRef.current;
     
-    const lastMsg = messages[messages.length - 1];
-    const isMe = lastMsg && (lastMsg.authorId === user?.id || lastMsg.isMe);
+    // Also, if it's our own message, always scroll down.
+    const isMyMessage = lastMsg.authorId === user?.id || lastMsg.sender === user?.username || lastMsg.isPending === true;
 
-    if (wasAtBottom || isMe) {
-      scrollToBottom();
+    if (wasAtBottom || isMyMessage) {
+      // Force the ref to true since we are scrolling to the bottom
+      isNearBottomRef.current = true;
+      isAutoScrollingRef.current = true;
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        // Emergency unlock in case the scroll gets interrupted and never naturally reaches the absolute bottom
+        setTimeout(() => {
+            isAutoScrollingRef.current = false;
+        }, 500);
+      }, 50);
+    } else {
+      // If we didn't auto-scroll, make sure the button appears to let the user know there's new content
+      setShowScrollButton(true);
     }
   }, [messages, user?.id]);
 
@@ -484,6 +692,39 @@ export default function GroupsTab() {
     if (e) e.preventDefault();
     if (!message.trim() && !attachment) return;
     if (!activeGroupId) return;
+
+    if (editingMessage) {
+       const contentToSend = message;
+       const messageId = editingMessage.id;
+       setEditingMessage(null);
+       setMessage('');
+       if (textareaRef.current) textareaRef.current.style.height = 'auto';
+       
+       try {
+         const token = localStorage.getItem('token');
+         const res = await fetch(`/api/groups/${activeGroupId}/messages/${messageId}`, {
+           method: 'PUT',
+           headers: {
+             'Content-Type': 'application/json',
+             Authorization: `Bearer ${token}`
+           },
+           body: JSON.stringify({ content: contentToSend })
+         });
+         
+         if (res.ok) {
+           const data = await res.json();
+           setMessages(prev => prev.map(m => m.id === messageId ? data.message : m));
+         } else {
+           const err = await res.json();
+           console.error('Failed to edit message:', err);
+           alert(err.error || 'Failed to edit message');
+         }
+       } catch (err) {
+         console.error(err);
+         alert('Failed to edit message');
+       }
+       return;
+    }
     
     const tempId = 'temp-' + Date.now();
     const contentToSend = message;
@@ -510,8 +751,17 @@ export default function GroupsTab() {
       isPending: true
     };
 
-    setMessages(prev => [...prev, tempMessage]);
+    if (hasMoreNewer) {
+      // If we are looking at history, jump to present first, then Optimistically append 
+      // Because fetchMessages overrides the list, we don't append optimistic locally, 
+      // we just let the fetch / socket populate it to avoid races.
+      fetchMessages(activeGroupId, 'initial');
+    } else {
+      setMessages(prev => [...prev, tempMessage]);
+    }
+    
     setMessage('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setReplyingTo(null);
     setAttachment(null);
     
@@ -580,6 +830,27 @@ export default function GroupsTab() {
     }
   };
 
+  const handlePinMessage = async (messageId: string, durationHours: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/groups/${activeGroupId}/messages/${messageId}/pin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ durationHours })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Failed to pin message');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to pin message');
+    }
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       setAttachment(e.target.files[0]);
@@ -627,8 +898,8 @@ export default function GroupsTab() {
   }, [availableCourses, myCourses]);
 
   const filteredAvailableCourses = availableCourses.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(joinSearchQuery.toLowerCase()) || 
-                          c.code.toLowerCase().includes(joinSearchQuery.toLowerCase());
+    const matchesSearch = c?.name?.toLowerCase().includes(joinSearchQuery?.toLowerCase() || '') || 
+                          c?.code?.toLowerCase().includes(joinSearchQuery?.toLowerCase() || '');
     
     let matchesCategory = selectedCategory === 'All';
     if (!matchesCategory && c.tags) {
@@ -745,14 +1016,59 @@ export default function GroupsTab() {
               </div>
             </div>
 
-            {/* Pinned Message */}
-            <div className="bg-neutral-900/80 border-b border-neutral-800 px-4 py-2 flex items-start gap-3 text-sm">
-              <Pin className="w-4 h-4 text-primary-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <span className="font-semibold text-primary-400 text-xs block mb-0.5">Pinned by Admin</span>
-                <p className="text-neutral-300">Midterm is scheduled for Oct 20th in Room 402. Bring your student ID.</p>
-              </div>
-            </div>
+            {/* Pinned Message Banner */}
+            <AnimatePresence>
+              {pinnedMessages.length > 0 && pinnedMessages[activePinnedIndex % pinnedMessages.length] && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="bg-neutral-900 border-b border-neutral-800 shrink-0 shadow-lg relative z-20 cursor-pointer overflow-hidden group/pin"
+                  onClick={() => {
+                     const msg = pinnedMessages[activePinnedIndex % pinnedMessages.length];
+                     const el = document.getElementById(`msg-${msg.id}`);
+                     const container = document.getElementById(`msg-container-${msg.id}`);
+                     if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+                        if (container) container.classList.add('z-50', 'relative');
+                        setTimeout(() => {
+                           el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+                           if (container) container.classList.remove('z-50', 'relative');
+                        }, 1500);
+                     }
+                     if (pinnedMessages.length > 1) {
+                         setActivePinnedIndex(prev => prev + 1);
+                     }
+                  }}
+                >
+                  <div className="px-4 py-3 flex items-center gap-3">
+                    <div className="p-2 bg-primary-500/10 text-primary-500 rounded-lg shrink-0">
+                      <Pin className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-primary-500 flex items-center gap-2">
+                          Pinned by Admin
+                          {pinnedMessages.length > 1 && (
+                             <span className="text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded-md text-[9px]">
+                               {(activePinnedIndex % pinnedMessages.length) + 1} / {pinnedMessages.length}
+                             </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-neutral-300 mt-0.5">
+                        {pinnedMessages[activePinnedIndex % pinnedMessages.length].content
+                          ? (pinnedMessages[activePinnedIndex % pinnedMessages.length].content.length > 80 
+                              ? pinnedMessages[activePinnedIndex % pinnedMessages.length].content.substring(0, 80) + '...' 
+                              : pinnedMessages[activePinnedIndex % pinnedMessages.length].content)
+                          : 'Attachment'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Messages */}
             <div 
@@ -761,23 +1077,41 @@ export default function GroupsTab() {
               className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-repeat"
               style={{ backgroundBlendMode: 'overlay', backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
             >
-              {isLoadingMessages && hasMoreMessages && (
+              {isLoadingMessages && hasMoreOlder && messages.length > 0 && (
                 <div className="text-center py-4">
                   <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
               <div className="text-center mb-6">
                 <div className="inline-block bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs px-3 py-1 rounded-full">
-                  Welcome to the {activeGroup.name} group! This is a space for students to discuss the course.
+                  Welcome to the {activeGroup?.name || 'group'} group! This is a space for students to discuss the course.
                 </div>
               </div>
+              
+              {messages.length === 0 && isLoadingMessages && (
+                <div className="flex flex-col gap-6 py-4">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className={clsx("flex gap-3", i % 2 === 0 ? "flex-row" : "flex-row-reverse")}>
+                      <div className="w-8 h-8 rounded-full bg-neutral-800 animate-pulse shrink-0" />
+                      <div className={clsx("flex flex-col gap-1 w-full max-w-[70%]", i % 2 === 0 ? "items-start" : "items-end")}>
+                        <div className="flex items-center gap-2 mb-1">
+                           <div className="w-24 h-3 bg-neutral-800 animate-pulse rounded" />
+                           <div className="w-12 h-2 bg-neutral-800/50 animate-pulse rounded" />
+                        </div>
+                        <div className={clsx("h-10 bg-neutral-800 animate-pulse", i % 2 === 0 ? "rounded-2xl rounded-tl-sm" : "rounded-2xl rounded-tr-sm", i === 1 ? "w-full" : i === 3 ? "w-1/2" : "w-3/4")} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {messages.filter(m => !m.deletedForMe).map((msg, index, arr) => {
                 const prevMsg = index > 0 ? arr[index - 1] : null;
                 const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
 
                 const isDeleted = msg.deletedForAll;
                 const repliedMsg = msg.replyToId ? messages.find(m => m.id === msg.replyToId) : null;
-                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || msg.author?.id === user?.id || msg.author?.username === user?.username || msg.author?.name === 'Me');
+                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || (msg.author && msg.author.id === user?.id) || (msg.author && msg.author.username === user?.username) || (msg.author && msg.author.name === 'Me'));
                 
                 const prevIsMe = prevMsg ? (prevMsg.isMe !== undefined ? prevMsg.isMe : (prevMsg.authorId === user?.id || prevMsg.author?.id === user?.id || prevMsg.author?.username === user?.username || prevMsg.author?.name === 'Me')) : false;
                 const nextIsMe = nextMsg ? (nextMsg.isMe !== undefined ? nextMsg.isMe : (nextMsg.authorId === user?.id || nextMsg.author?.id === user?.id || nextMsg.author?.username === user?.username || nextMsg.author?.name === 'Me')) : false;
@@ -787,25 +1121,39 @@ export default function GroupsTab() {
                 const prevTimeString = prevMsg ? getTimeString(prevMsg) : null;
                 const nextTimeString = nextMsg ? getTimeString(nextMsg) : null;
 
-                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute)
-                const isSameSenderAsPrev = prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
+                // Date separator logic
+                const currentDate = new Date(msg.createdAt || msg.time).toLocaleDateString();
+                const prevDate = prevMsg ? new Date(prevMsg.createdAt || prevMsg.time).toLocaleDateString() : null;
+                const showDateSeparator = currentDate !== prevDate;
+
+                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute) AND on the same date
+                const isSameSenderAsPrev = !showDateSeparator && prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
                 const isSameSenderAsNext = nextMsg && ((isMe && nextIsMe) || (!isMe && !nextIsMe && (msg.authorId === nextMsg.authorId || msg.sender === nextMsg.sender))) && (msgTimeString === nextTimeString);
 
                 const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
 
                 return (
-                  <motion.div 
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    key={msg.id} 
-                    className={clsx(
-                      "flex flex-col group/message", 
-                      isMe ? "items-end" : "items-start",
-                      isSameSenderAsPrev ? "mt-0.5" : "mt-3"
+                  <React.Fragment key={msg.id}>
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-6">
+                        <div className="bg-neutral-800/80 backdrop-blur-md border border-neutral-700/50 text-neutral-300 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+                          {new Date(msg.createdAt || msg.time).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
                     )}
-                  >
-                    <div className={clsx("flex items-end gap-2 max-w-[80%]", isMe ? "flex-row-reverse" : "flex-row")}>
+                    
+                    <motion.div 
+                      id={`msg-container-${msg.id}`}
+                      initial={isInitialLoadRef.current || isFetchingHistoryRef.current ? false : { opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className={clsx(
+                        "flex flex-col group/message w-full", 
+                        isMe ? "items-end" : "items-start",
+                        isSameSenderAsPrev ? "mt-0.5" : "mt-3"
+                      )}
+                    >
+                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
                       {!isMe && (
                         <div className="w-8 flex-shrink-0">
                           {!isSameSenderAsNext && (
@@ -834,10 +1182,17 @@ export default function GroupsTab() {
                       <div className="flex flex-col gap-1 relative">
                         {/* Options Menu */}
                         <div className={clsx(
-                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1",
+                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
                           isMe ? "right-full mr-2" : "left-full ml-2"
                         )}>
-                          <div className="relative">
+                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
+                            <button 
+                              onClick={() => setReplyingTo(msg)}
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
+                              title="Reply"
+                            >
+                              <Reply className="w-4 h-4" />
+                            </button>
                             <button 
                               onClick={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -849,6 +1204,7 @@ export default function GroupsTab() {
                                   msg
                                 });
                               }}
+                              title="More Options"
                               className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
                             >
                               <MoreVertical className="w-4 h-4" />
@@ -877,7 +1233,22 @@ export default function GroupsTab() {
                           {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
                           
                           {repliedMsg && !isDeleted && (
-                            <div className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs">
+                            <div 
+                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
+                              onClick={() => {
+                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
+                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
+                                 if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+                                    if (container) container.classList.add('z-50', 'relative');
+                                    setTimeout(() => {
+                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+                                       if (container) container.classList.remove('z-50', 'relative');
+                                    }, 1500);
+                                 }
+                              }}
+                            >
                               <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
                               <div className="truncate opacity-80">{repliedMsg.content}</div>
                             </div>
@@ -917,6 +1288,7 @@ export default function GroupsTab() {
                               "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
                               isMe ? "text-primary-200" : "text-neutral-500"
                             )}>
+                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
                               {msgTimeString}
                               {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
                               {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
@@ -926,29 +1298,66 @@ export default function GroupsTab() {
                       </div>
                     </div>
                   </motion.div>
+                  </React.Fragment>
                 );
               })}
+              {isLoadingMessages && hasMoreNewer && (
+                <div className="text-center py-4">
+                  <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              )}
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Scroll to bottom button */}
-            <AnimatePresence>
-              {showScrollButton && (
-                <motion.div
-                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
-                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
-                  className="absolute bottom-24 right-6 z-10"
-                >
-                  <button
-                    onClick={scrollToBottom}
-                    className="w-10 h-10 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-full shadow-lg flex items-center justify-center text-neutral-300 hover:text-white transition-colors"
+            {/* Floating Action Buttons */}
+            <div className="absolute bottom-24 right-6 flex flex-col gap-3 z-30">
+              <AnimatePresence>
+                {unreadMentions.length > 0 && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.5, x: 20 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.5, x: 20 }}
+                    onClick={() => {
+                      const firstMentionId = unreadMentions[0];
+                      const el = document.getElementById(`msg-${firstMentionId}`);
+                      if (el) {
+                        isAutoScrollingRef.current = true;
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        setTimeout(() => {
+                            isAutoScrollingRef.current = false;
+                        }, 500);
+                      } else {
+                        // Fetch the message if not in view
+                        setSearchParams({ id: activeGroupId, messageId: firstMentionId });
+                      }
+                    }}
+                    className="p-3 bg-neutral-800 text-primary-400 border border-neutral-700 rounded-full shadow-lg hover:bg-neutral-700 transition-colors flex items-center justify-center relative"
                   >
-                    <ChevronDown className="w-5 h-5" />
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                    <span className="font-bold text-lg leading-none select-none">@</span>
+                    <div className="absolute -top-1 -right-1 w-4 h-4 bg-primary-500 text-white text-[10px] font-bold rounded-full border-2 border-neutral-900 flex items-center justify-center">
+                      {unreadMentions.length}
+                    </div>
+                  </motion.button>
+                )}
+              </AnimatePresence>
+
+              <AnimatePresence>
+                {showScrollButton && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.5, x: 20 }}
+                    animate={{ opacity: 1, scale: 1, x: 0 }}
+                    exit={{ opacity: 0, scale: 0.5, x: 20 }}
+                    onClick={scrollToBottom}
+                    className="p-3 bg-primary-600 text-white rounded-full shadow-lg hover:bg-primary-700 transition-colors flex items-center justify-center relative"
+                  >
+                    <ChevronDown className={clsx("w-6 h-6", hasMoreNewer && "animate-bounce")} />
+                    {hasMoreNewer && (
+                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-neutral-900" />
+                    )}
+                  </motion.button>
+                )}
+              </AnimatePresence>
+            </div>
 
               <div className="p-4 bg-neutral-900 border-t border-neutral-800 relative flex flex-col gap-2">
                 {/* Replying To Preview */}
@@ -1006,9 +1415,35 @@ export default function GroupsTab() {
                   )}
                 </AnimatePresence>
 
+                {/* Editing Message Preview */}
+                <AnimatePresence>
+                  {editingMessage && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, y: 10, height: 0 }}
+                      className="flex items-center justify-between bg-neutral-800/50 rounded-xl p-3 border border-neutral-700/50"
+                    >
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="text-xs font-bold text-primary-400">Editing Message</span>
+                        <span className="text-sm text-neutral-300 truncate">{editingMessage.content}</span>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setEditingMessage(null);
+                          setMessage('');
+                        }}
+                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Mentions Dropdown */}
                 <AnimatePresence>
-                  {message.includes('@') && !message.split('@').pop()?.includes(' ') && (
+                  {message?.includes('@') && !message.split('@').pop()?.includes(' ') && (
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1072,7 +1507,11 @@ export default function GroupsTab() {
                     placeholder={`Message ${activeGroup.name} students...`} 
                     className="flex-1 bg-transparent border-none outline-none text-sm text-neutral-200 resize-none py-2.5 max-h-[150px] custom-scrollbar"
                     value={message}
-                    onChange={(e) => setMessage(e.target.value)}
+                    onChange={(e) => {
+                      setMessage(e.target.value);
+                      e.target.style.height = 'auto';
+                      e.target.style.height = e.target.scrollHeight + 'px';
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -1495,7 +1934,9 @@ export default function GroupsTab() {
             transition={{ duration: 0.15 }}
             style={{
               position: 'fixed',
-              top: activeMessageOptions.rect.bottom + 8,
+              ...(activeMessageOptions.rect.bottom + 280 > window.innerHeight 
+                  ? { bottom: window.innerHeight - activeMessageOptions.rect.top + 8 }
+                  : { top: activeMessageOptions.rect.bottom + 8 }),
               left: activeMessageOptions.isMe 
                 ? Math.max(16, activeMessageOptions.rect.right - 192) // 192px is w-48
                 : Math.min(window.innerWidth - 192 - 16, activeMessageOptions.rect.left),
@@ -1511,6 +1952,40 @@ export default function GroupsTab() {
               >
                 <Reply className="w-4 h-4" /> Reply
               </button>
+
+              {(user?.role === 'ADMIN' || activeGroupMembers.find(m => m.id === user?.id)?.role === 'admin') && (
+                <>
+                  <div className="w-full h-px bg-neutral-800 my-1" />
+                  <button 
+                    onClick={() => { 
+                      setPinPromptMessage({ id: activeMessageOptions.id });
+                      setActiveMessageOptions(null);
+                    }} 
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-primary-400 hover:text-primary-300 text-sm rounded-lg transition-colors flex items-center gap-3"
+                  >
+                    <Pin className="w-4 h-4" /> Pin Message
+                  </button>
+                  {activeMessageOptions.msg.pinnedUntil && new Date(activeMessageOptions.msg.pinnedUntil) > new Date() && (
+                      <button onClick={() => { handlePinMessage(activeMessageOptions.id, 0); setActiveMessageOptions(null); }} className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-400 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"><X className="w-4 h-4" /> Unpin</button>
+                  )}
+                  <div className="w-full h-px bg-neutral-800 my-1" />
+                </>
+              )}
+
+              {activeMessageOptions.isMe && !activeMessageOptions.isDeleted && Date.now() - new Date(activeMessageOptions.msg.createdAt).getTime() <= 10 * 60 * 1000 && (
+                <button 
+                  onClick={() => { 
+                    setEditingMessage(activeMessageOptions.msg); 
+                    setMessage(activeMessageOptions.msg.content);
+                    textareaRef.current?.focus();
+                    setActiveMessageOptions(null); 
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
+                >
+                  <FileText className="w-4 h-4" /> Edit Message
+                </button>
+              )}
+
               <button 
                 onClick={() => { 
                    setReportingMessage(activeMessageOptions.msg);
@@ -1521,26 +1996,108 @@ export default function GroupsTab() {
                 <ShieldAlert className="w-4 h-4" /> Report message
               </button>
               {activeMessageOptions.isMe && !activeMessageOptions.isDeleted && (
-                <>
-                  <button 
-                    onClick={() => { handleDeleteForMe(activeMessageOptions.id); setActiveMessageOptions(null); }}
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete for me
-                  </button>
-                  <button 
-                    onClick={() => { handleDeleteForAll(activeMessageOptions.id); setActiveMessageOptions(null); }}
-                    className="w-full text-left px-3 py-2 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-sm rounded-lg transition-colors flex items-center gap-3 mt-1"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete for everyone
-                  </button>
-                </>
+                <button 
+                  onClick={() => { handleDeleteForMe(activeMessageOptions.id); setActiveMessageOptions(null); }}
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete for me
+                </button>
+              )}
+              {((activeMessageOptions.isMe || user?.role === 'ADMIN' || activeGroupMembers.find(m => m.id === user?.id)?.role === 'admin') && !activeMessageOptions.isDeleted) && (
+                <button 
+                  onClick={() => { handleDeleteForAll(activeMessageOptions.id); setActiveMessageOptions(null); }}
+                  className="w-full text-left px-3 py-2 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-sm rounded-lg transition-colors flex items-center gap-3 mt-1"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete for everyone
+                </button>
               )}
             </div>
           </motion.div>
         </div>,
         document.body
       )}
+
+      {/* Pin Config Modal */}
+      <AnimatePresence>
+        {pinPromptMessage && (
+          <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setPinPromptMessage(null)}
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl p-6"
+            >
+              <h3 className="text-xl font-bold text-white mb-2">Pin Duration</h3>
+              <p className="text-neutral-400 text-sm mb-4">Select how long to pin this message.</p>
+              
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 1);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  1 Hour
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 12);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  12 Hours
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 24);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  1 Day
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 48);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  2 Days
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 168);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  1 Week
+                </button>
+                <div className="w-full h-px bg-neutral-800 my-1" />
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, -1);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
+                >
+                  Forever
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

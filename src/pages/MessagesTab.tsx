@@ -115,6 +115,11 @@ export default function MessagesTab() {
   const [hasMoreMessages, setHasMoreMessages] = useState(true);
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [pinnedMessages, setPinnedMessages] = useState<any[]>([]);
+  const [activePinnedIndex, setActivePinnedIndex] = useState(0);
+  const [editingMessage, setEditingMessage] = useState<any | null>(null);
+  const [pinPromptMessage, setPinPromptMessage] = useState<{ id: string } | null>(null);
+  const [pinDurationInput, setPinDurationInput] = useState('24');
   const prevScrollHeightRef = useRef<number | null>(null);
   const [replyingTo, setReplyingTo] = useState<any | null>(null);
   const [attachment, setAttachment] = useState<File | null>(null);
@@ -155,6 +160,7 @@ export default function MessagesTab() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const unreadCountRef = useRef<number>(0);
 
   useEffect(() => {
     fetchGroups();
@@ -186,15 +192,45 @@ export default function MessagesTab() {
           }
           return m;
         }));
+        
+        setPinnedMessages(prev => prev.filter(m => m.id !== data.messageId));
+      };
+
+      const handleMessageUpdated = (data: { message: any }) => {
+        setMessages(prev => prev.map(m => {
+          if (m.id === data.message.id) {
+            return data.message;
+          }
+          return m;
+        }));
+
+        setPinnedMessages(prev => {
+           const now = new Date();
+           const isPinned = data.message.pinnedUntil && new Date(data.message.pinnedUntil) > now;
+           if (isPinned) {
+               // Update or add
+               const exists = prev.some(m => m.id === data.message.id);
+               if (exists) {
+                   return prev.map(m => m.id === data.message.id ? data.message : m);
+               } else {
+                   return [data.message, ...prev];
+               }
+           } else {
+               // Remove
+               return prev.filter(m => m.id !== data.message.id);
+           }
+        });
       };
 
       socket.on('new_message', handleNewMessage);
       socket.on('message_deleted', handleMessageDeleted);
+      socket.on('message_updated', handleMessageUpdated);
 
       return () => {
         socket.emit('leave_group', activeGroupId);
         socket.off('new_message', handleNewMessage);
         socket.off('message_deleted', handleMessageDeleted);
+        socket.off('message_updated', handleMessageUpdated);
       };
     }
   }, [socket, activeGroupId]);
@@ -307,12 +343,16 @@ export default function MessagesTab() {
           return newMessages;
         });
         
-        setNextCursor(data.nextCursor);
-        setHasMoreMessages(data.hasMore);
+        if (data.pinnedMessages) {
+            setPinnedMessages(data.pinnedMessages);
+        }
+
+        setNextCursor(data.nextCursorOlder || data.nextCursor);
+        setHasMoreMessages(data.hasMoreOlder !== undefined ? data.hasMoreOlder : data.hasMore);
         
         if (isInitial && !searchParams.get('messageId')) {
           setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
+              messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
           }, 100);
         }
       }
@@ -373,6 +413,27 @@ export default function MessagesTab() {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handlePinMessage = async (messageId: string, durationHours: number) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/groups/${activeGroupId}/messages/${messageId}/pin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ durationHours })
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert(err.error || 'Failed to pin message');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Failed to pin message');
     }
   };
 
@@ -461,9 +522,19 @@ export default function MessagesTab() {
     }
   }, [message]);
 
+  const lastMessageIdRef = useRef<string | null>(null);
+
   // Scroll to bottom when new message is added
   useEffect(() => {
-    if (!messagesContainerRef.current) return;
+    if (!messagesContainerRef.current || messages.length === 0) return;
+    
+    const lastMsg = messages[messages.length - 1];
+    const prevLastId = lastMessageIdRef.current;
+    lastMessageIdRef.current = lastMsg.id;
+    
+    // If the last message didn't change (e.g. we just loaded history), do not auto-scroll
+    if (prevLastId === lastMsg.id) return;
+    
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     
     // Determine if we should auto-scroll
@@ -471,8 +542,7 @@ export default function MessagesTab() {
     const wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
     
     // 2. If the last message is from the current user
-    const lastMsg = messages[messages.length - 1];
-    const isMe = lastMsg && (lastMsg.authorId === user?.id || lastMsg.isMe);
+    const isMe = lastMsg && (lastMsg.authorId === user?.id || lastMsg.isMe || lastMsg.isPending === true);
 
     if (wasAtBottom || isMe) {
       scrollToBottom();
@@ -541,6 +611,39 @@ export default function MessagesTab() {
     if (e) e.preventDefault();
     if (!message.trim() && !attachment) return;
     if (!activeGroupId) return;
+
+    if (editingMessage) {
+       const contentToSend = message;
+       const messageId = editingMessage.id;
+       setEditingMessage(null);
+       setMessage('');
+       if (textareaRef.current) textareaRef.current.style.height = 'auto';
+       
+       try {
+         const token = localStorage.getItem('token');
+         const res = await fetch(`/api/groups/${activeGroupId}/messages/${messageId}`, {
+           method: 'PUT',
+           headers: {
+             'Content-Type': 'application/json',
+             Authorization: `Bearer ${token}`
+           },
+           body: JSON.stringify({ content: contentToSend })
+         });
+         
+         if (res.ok) {
+           const data = await res.json();
+           setMessages(prev => prev.map(m => m.id === messageId ? data.message : m));
+         } else {
+           const err = await res.json();
+           console.error('Failed to edit message:', err);
+           alert(err.error || 'Failed to edit message');
+         }
+       } catch (err) {
+         console.error(err);
+         alert('Failed to edit message');
+       }
+       return;
+    }
     
     const tempId = 'temp-' + Date.now();
     const contentToSend = message;
@@ -569,6 +672,7 @@ export default function MessagesTab() {
 
     setMessages(prev => [...prev, tempMessage]);
     setMessage('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setReplyingTo(null);
     setAttachment(null);
     
@@ -657,8 +761,8 @@ export default function MessagesTab() {
   }, [availableCourses, myCourses]);
 
   const filteredAvailableCourses = availableCourses.filter(c => {
-    const matchesSearch = c.name.toLowerCase().includes(joinSearchQuery.toLowerCase()) || 
-                          c.code.toLowerCase().includes(joinSearchQuery.toLowerCase());
+    const matchesSearch = c?.name?.toLowerCase().includes(joinSearchQuery?.toLowerCase() || '') || 
+                          c?.code?.toLowerCase().includes(joinSearchQuery?.toLowerCase() || '');
     
     let matchesCategory = selectedCategory === 'All';
     if (!matchesCategory && c.tags) {
@@ -761,6 +865,60 @@ export default function MessagesTab() {
               </div>
             </div>
 
+            {/* Pinned Message Banner */}
+            <AnimatePresence>
+              {pinnedMessages.length > 0 && pinnedMessages[activePinnedIndex % pinnedMessages.length] && (
+                <motion.div 
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  className="bg-neutral-900 border-b border-neutral-800 shrink-0 shadow-lg relative z-20 cursor-pointer overflow-hidden group/pin"
+                  onClick={() => {
+                     const msg = pinnedMessages[activePinnedIndex % pinnedMessages.length];
+                     const el = document.getElementById(`msg-${msg.id}`);
+                     const container = document.getElementById(`msg-container-${msg.id}`);
+                     if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+                        if (container) container.classList.add('z-50', 'relative');
+                        setTimeout(() => {
+                           el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+                           if (container) container.classList.remove('z-50', 'relative');
+                        }, 1500);
+                     }
+                     if (pinnedMessages.length > 1) {
+                         setActivePinnedIndex(prev => prev + 1);
+                     }
+                  }}
+                >
+                  <div className="px-4 py-3 flex items-center gap-3">
+                    <div className="p-2 bg-primary-500/10 text-primary-500 rounded-lg shrink-0">
+                      <Pin className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-4">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-primary-500 flex items-center gap-2">
+                          Pinned by Admin
+                          {pinnedMessages.length > 1 && (
+                             <span className="text-neutral-500 bg-neutral-800 px-1.5 py-0.5 rounded-md text-[9px]">
+                               {(activePinnedIndex % pinnedMessages.length) + 1} / {pinnedMessages.length}
+                             </span>
+                          )}
+                        </div>
+                      </div>
+                      <p className="text-sm text-neutral-300 mt-0.5">
+                        {pinnedMessages[activePinnedIndex % pinnedMessages.length].content
+                          ? (pinnedMessages[activePinnedIndex % pinnedMessages.length].content.length > 80 
+                              ? pinnedMessages[activePinnedIndex % pinnedMessages.length].content.substring(0, 80) + '...' 
+                              : pinnedMessages[activePinnedIndex % pinnedMessages.length].content)
+                          : 'Attachment'}
+                      </p>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Messages */}
             <div 
               ref={messagesContainerRef}
@@ -768,11 +926,34 @@ export default function MessagesTab() {
               className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-repeat"
               style={{ backgroundBlendMode: 'overlay', backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
             >
-              {isLoadingMessages && hasMoreMessages && (
+              {isLoadingMessages && hasMoreMessages && messages.length > 0 && (
                 <div className="text-center py-4">
                   <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               )}
+              <div className="text-center mb-6">
+                <div className="inline-block bg-neutral-900 border border-neutral-800 text-neutral-400 text-xs px-3 py-1 rounded-full">
+                  This is the start of your direct message history with {activeGroup?.name || 'this user'}.
+                </div>
+              </div>
+
+              {messages.length === 0 && isLoadingMessages && (
+                <div className="flex flex-col gap-6 py-4">
+                  {[...Array(6)].map((_, i) => (
+                    <div key={i} className={clsx("flex gap-3", i % 2 === 0 ? "flex-row" : "flex-row-reverse")}>
+                      <div className="w-8 h-8 rounded-full bg-neutral-800 animate-pulse shrink-0" />
+                      <div className={clsx("flex flex-col gap-1 w-full max-w-[70%]", i % 2 === 0 ? "items-start" : "items-end")}>
+                        <div className="flex items-center gap-2 mb-1">
+                           <div className="w-24 h-3 bg-neutral-800 animate-pulse rounded" />
+                           <div className="w-12 h-2 bg-neutral-800/50 animate-pulse rounded" />
+                        </div>
+                        <div className={clsx("h-10 bg-neutral-800 animate-pulse", i % 2 === 0 ? "rounded-2xl rounded-tl-sm" : "rounded-2xl rounded-tr-sm", i === 1 ? "w-full" : i === 3 ? "w-1/2" : "w-3/4")} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {messages.filter(m => !m.deletedForMe).map((msg, index, arr) => {
                 const prevMsg = index > 0 ? arr[index - 1] : null;
                 const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
@@ -796,18 +977,20 @@ export default function MessagesTab() {
                 const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
 
                 return (
-                  <motion.div 
+                  <React.Fragment key={msg.id}>
+                    <motion.div 
+                      id={`msg-container-${msg.id}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: index * 0.05 }}
                     key={msg.id} 
                     className={clsx(
-                      "flex flex-col group/message", 
+                      "flex flex-col group/message w-full", 
                       isMe ? "items-end" : "items-start",
                       isSameSenderAsPrev ? "mt-0.5" : "mt-3"
                     )}
                   >
-                    <div className={clsx("flex items-end gap-2 max-w-[80%]", isMe ? "flex-row-reverse" : "flex-row")}>
+                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
                       {!isMe && (
                         <div className="w-8 flex-shrink-0">
                           {!isSameSenderAsNext && (
@@ -836,10 +1019,17 @@ export default function MessagesTab() {
                       <div className="flex flex-col gap-1 relative">
                         {/* Options Menu */}
                         <div className={clsx(
-                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1",
+                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
                           isMe ? "right-full mr-2" : "left-full ml-2"
                         )}>
-                          <div className="relative">
+                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
+                            <button 
+                              onClick={() => setReplyingTo(msg)}
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
+                              title="Reply"
+                            >
+                              <Reply className="w-4 h-4" />
+                            </button>
                             <button 
                               onClick={(e) => {
                                 const rect = e.currentTarget.getBoundingClientRect();
@@ -851,6 +1041,7 @@ export default function MessagesTab() {
                                   msg
                                 });
                               }}
+                              title="More Options"
                               className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
                             >
                               <MoreVertical className="w-4 h-4" />
@@ -879,7 +1070,22 @@ export default function MessagesTab() {
                           {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
                           
                           {repliedMsg && !isDeleted && (
-                            <div className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs">
+                            <div 
+                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
+                              onClick={() => {
+                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
+                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
+                                 if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+                                    if (container) container.classList.add('z-50', 'relative');
+                                    setTimeout(() => {
+                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+                                       if (container) container.classList.remove('z-50', 'relative');
+                                    }, 1500);
+                                 }
+                              }}
+                            >
                               <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
                               <div className="truncate opacity-80">{repliedMsg.content}</div>
                             </div>
@@ -923,6 +1129,7 @@ export default function MessagesTab() {
                               "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
                               isMe ? "text-primary-200" : "text-neutral-500"
                             )}>
+                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
                               {msgTimeString}
                               {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
                               {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
@@ -932,6 +1139,7 @@ export default function MessagesTab() {
                       </div>
                     </div>
                   </motion.div>
+                  </React.Fragment>
                 );
               })}
               <div ref={messagesEndRef} />
@@ -980,6 +1188,32 @@ export default function MessagesTab() {
                   )}
                 </AnimatePresence>
 
+                {/* Editing Message Preview */}
+                <AnimatePresence>
+                  {editingMessage && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, height: 0 }}
+                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+                      exit={{ opacity: 0, y: 10, height: 0 }}
+                      className="flex items-center justify-between bg-neutral-800/50 rounded-xl p-3 border border-neutral-700/50"
+                    >
+                      <div className="flex flex-col overflow-hidden">
+                        <span className="text-xs font-bold text-primary-400">Editing Message</span>
+                        <span className="text-sm text-neutral-300 truncate">{editingMessage.content}</span>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          setEditingMessage(null);
+                          setMessage('');
+                        }}
+                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-full transition-colors"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 {/* Attachment Preview */}
                 <AnimatePresence>
                   {attachment && (
@@ -1014,7 +1248,7 @@ export default function MessagesTab() {
 
                 {/* Mentions Dropdown */}
                 <AnimatePresence>
-                  {message.includes('@') && !message.split('@').pop()?.includes(' ') && (
+                  {message?.includes('@') && !message.split('@').pop()?.includes(' ') && (
                     <motion.div 
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -1078,7 +1312,11 @@ export default function MessagesTab() {
                     placeholder={`Message ${activeGroup.name} students...`} 
                     className="flex-1 bg-transparent border-none outline-none text-sm text-neutral-200 resize-none py-2.5 max-h-[150px] custom-scrollbar"
                     value={message}
-                    onChange={(e) => setMessage(e.target.value)}
+                    onChange={(e) => {
+                      setMessage(e.target.value);
+                      e.target.style.height = 'auto';
+                      e.target.style.height = e.target.scrollHeight + 'px';
+                    }}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -1474,7 +1712,9 @@ export default function MessagesTab() {
             transition={{ duration: 0.15 }}
             style={{
               position: 'fixed',
-              top: activeMessageOptions.rect.bottom + 8,
+              ...(activeMessageOptions.rect.bottom + 280 > window.innerHeight 
+                  ? { bottom: window.innerHeight - activeMessageOptions.rect.top + 8 }
+                  : { top: activeMessageOptions.rect.bottom + 8 }),
               left: activeMessageOptions.isMe 
                 ? Math.max(16, activeMessageOptions.rect.right - 192) // 192px is w-48
                 : Math.min(window.innerWidth - 192 - 16, activeMessageOptions.rect.left),
@@ -1490,6 +1730,40 @@ export default function MessagesTab() {
               >
                 <Reply className="w-4 h-4" /> Reply
               </button>
+              
+              {(user?.role === 'ADMIN' || activeGroupMembers.find(m => m.id === user?.id)?.role === 'admin') && (
+                <>
+                  <div className="w-full h-px bg-neutral-800 my-1" />
+                  <button 
+                    onClick={() => { 
+                      setPinPromptMessage({ id: activeMessageOptions.id });
+                      setActiveMessageOptions(null);
+                    }} 
+                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-primary-400 hover:text-primary-300 text-sm rounded-lg transition-colors flex items-center gap-3"
+                  >
+                    <Pin className="w-4 h-4" /> Pin Message
+                  </button>
+                  {activeMessageOptions.msg.pinnedUntil && new Date(activeMessageOptions.msg.pinnedUntil) > new Date() && (
+                      <button onClick={() => { handlePinMessage(activeMessageOptions.id, 0); setActiveMessageOptions(null); }} className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-400 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"><X className="w-4 h-4" /> Unpin</button>
+                  )}
+                  <div className="w-full h-px bg-neutral-800 my-1" />
+                </>
+              )}
+
+              {activeMessageOptions.isMe && !activeMessageOptions.isDeleted && Date.now() - new Date(activeMessageOptions.msg.createdAt).getTime() <= 10 * 60 * 1000 && (
+                <button 
+                  onClick={() => { 
+                    setEditingMessage(activeMessageOptions.msg); 
+                    setMessage(activeMessageOptions.msg.content);
+                    textareaRef.current?.focus();
+                    setActiveMessageOptions(null); 
+                  }}
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
+                >
+                  <FileText className="w-4 h-4" /> Edit Message
+                </button>
+              )}
+
               {!activeMessageOptions.isMe && (
                 <button 
                   onClick={() => { setReportingMessage(activeMessageOptions.msg); setActiveMessageOptions(null); }}
@@ -1499,26 +1773,108 @@ export default function MessagesTab() {
                 </button>
               )}
               {activeMessageOptions.isMe && !activeMessageOptions.isDeleted && (
-                <>
-                  <button 
-                    onClick={() => { handleDeleteForMe(activeMessageOptions.id); setActiveMessageOptions(null); }}
-                    className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete for me
-                  </button>
-                  <button 
-                    onClick={() => { handleDeleteForAll(activeMessageOptions.id); setActiveMessageOptions(null); }}
-                    className="w-full text-left px-3 py-2 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-sm rounded-lg transition-colors flex items-center gap-3 mt-1"
-                  >
-                    <Trash2 className="w-4 h-4" /> Delete for everyone
-                  </button>
-                </>
+                <button 
+                  onClick={() => { handleDeleteForMe(activeMessageOptions.id); setActiveMessageOptions(null); }}
+                  className="w-full text-left px-3 py-2 hover:bg-neutral-800 text-neutral-300 hover:text-white text-sm rounded-lg transition-colors flex items-center gap-3"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete for me
+                </button>
+              )}
+              {((activeMessageOptions.isMe || user?.role === 'ADMIN' || activeGroupMembers.find(m => m.id === user?.id)?.role === 'admin') && !activeMessageOptions.isDeleted) && (
+                <button 
+                  onClick={() => { handleDeleteForAll(activeMessageOptions.id); setActiveMessageOptions(null); }}
+                  className="w-full text-left px-3 py-2 hover:bg-red-500/10 text-red-400 hover:text-red-300 text-sm rounded-lg transition-colors flex items-center gap-3 mt-1"
+                >
+                  <Trash2 className="w-4 h-4" /> Delete for everyone
+                </button>
               )}
             </div>
           </motion.div>
         </div>,
         document.body
       )}
+
+      {/* Pin Config Modal */}
+      <AnimatePresence>
+        {pinPromptMessage && (
+          <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+              onClick={() => setPinPromptMessage(null)}
+            />
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-sm bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl p-6"
+            >
+              <h3 className="text-xl font-bold text-white mb-2">Pin Duration</h3>
+              <p className="text-neutral-400 text-sm mb-4">Select how long to pin this message.</p>
+              
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 1);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  1 Hour
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 12);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  12 Hours
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 24);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  1 Day
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 48);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  2 Days
+                </button>
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, 168);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg transition-colors font-medium border border-neutral-700 hover:border-primary-500/50"
+                >
+                  1 Week
+                </button>
+                <div className="w-full h-px bg-neutral-800 my-1" />
+                <button 
+                  onClick={() => {
+                     handlePinMessage(pinPromptMessage.id, -1);
+                     setPinPromptMessage(null);
+                  }}
+                  className="w-full py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-lg transition-colors font-medium"
+                >
+                  Forever
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Delete Chat Confirmation Modal */}
       <AnimatePresence>

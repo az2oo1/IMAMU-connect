@@ -74,8 +74,8 @@ export default function CoursesTab() {
   };
 
   const filteredCourses = courses.filter(course => 
-    course.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    course.code.toLowerCase().includes(searchQuery.toLowerCase())
+    course?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    course?.code?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   return (

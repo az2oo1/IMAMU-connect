@@ -2,6 +2,7 @@ import React from 'react';
 import { Link as LinkIcon, Linkedin, Github, Instagram, Twitter, Globe } from 'lucide-react';
 
 export const getIconForUrl = (url: string) => {
+  if (!url) return <LinkIcon className="w-4 h-4" />;
   if (url.includes('github.com')) return <Github className="w-4 h-4" />;
   if (url.includes('linkedin.com')) return <Linkedin className="w-4 h-4" />;
   if (url.includes('instagram.com')) return <Instagram className="w-4 h-4" />;
@@ -11,6 +12,7 @@ export const getIconForUrl = (url: string) => {
 };
 
 export const getPlatformName = (url: string) => {
+  if (!url) return 'Link';
   if (url.includes('github.com')) return 'GitHub';
   if (url.includes('linkedin.com')) return 'LinkedIn';
   if (url.includes('instagram.com')) return 'Instagram';

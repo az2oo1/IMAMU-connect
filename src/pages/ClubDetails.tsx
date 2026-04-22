@@ -237,23 +237,31 @@ export default function ClubDetails() {
             
             {club.articles && club.articles.length > 0 ? (
               <div className="space-y-4">
-                {club.articles.map((article: any) => (
+                {club.articles.map((article: any) => {
+                  let parsedImages: string[] = [];
+                  if (article.images) {
+                     try {
+                        parsedImages = typeof article.images === 'string' ? JSON.parse(article.images) : article.images;
+                     } catch (e) {}
+                  }
+                  
+                  return (
                   <div 
                     key={article.id}
-                    onClick={() => setSelectedArticle(article)}
+                    onClick={() => setSelectedArticle({...article, images: parsedImages})}
                     className="group flex flex-col sm:flex-row gap-6 p-5 rounded-[2rem] bg-neutral-900/50 border border-neutral-800 hover:border-primary-500/50 transition-all cursor-pointer"
                   >
                     <div className="w-full sm:w-48 h-48 sm:h-32 shrink-0 rounded-2xl overflow-hidden bg-neutral-800">
-                      {article.imageUrl ? (
+                      {(article.photoUrl || article.imageUrl || (parsedImages.length > 0)) ? (
                         <img 
-                          src={article.imageUrl} 
+                          src={`/api/image?url=${encodeURIComponent(article.photoUrl || article.imageUrl || parsedImages[0])}&w=400`} 
                           alt={article.title} 
                           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                           referrerPolicy="no-referrer"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-neutral-600">
-                          No Image
+                        <div className="w-full h-full flex items-center justify-center text-neutral-600 font-bold bg-neutral-800/80">
+                          {article.title.substring(0, 2).toUpperCase()}
                         </div>
                       )}
                     </div>
@@ -269,7 +277,8 @@ export default function ClubDetails() {
                       </p>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
               <div className="text-center py-16 bg-neutral-900/30 rounded-[2rem] border border-neutral-800 border-dashed">
@@ -284,11 +293,13 @@ export default function ClubDetails() {
         <NewsArticleModal 
           article={{
             ...selectedArticle,
-            image: selectedArticle.imageUrl,
+            image: selectedArticle.photoUrl || selectedArticle.imageUrl || (selectedArticle.images && selectedArticle.images[0]) || `https://picsum.photos/seed/${selectedArticle.id}/800/600`,
+            images: selectedArticle.images || [],
             date: new Date(selectedArticle.createdAt).toLocaleDateString(),
             category: club.name,
             readTime: '5 min read',
-            author: { name: club.name, avatar: club.avatarUrl }
+            author: { id: club.id, isClub: true, name: club.name, avatar: club.avatarUrl },
+            authorAvatar: club.avatarUrl
           }} 
           isOpen={!!selectedArticle} 
           onClose={() => setSelectedArticle(null)} 

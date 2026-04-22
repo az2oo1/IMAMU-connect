@@ -33,10 +33,10 @@ export default function SettingsTab() {
   };
 
   const toggleNavItem = (id: string) => {
-    if (hiddenNavItems.includes(id)) {
-      setHiddenNavItems(hiddenNavItems.filter(item => item !== id));
+    if ((hiddenNavItems || []).includes(id)) {
+      setHiddenNavItems((hiddenNavItems || []).filter(item => item !== id));
     } else {
-      setHiddenNavItems([...hiddenNavItems, id]);
+      setHiddenNavItems([...(hiddenNavItems || []), id]);
     }
   };
 
@@ -124,10 +124,10 @@ export default function SettingsTab() {
             <h3 className="text-sm font-medium text-neutral-400 mb-4 uppercase tracking-wider">Navigation Bar</h3>
             <p className="text-xs text-neutral-500 mb-4">Reorder tabs and choose which ones appear in the top bar. Unchecked items move to the "More" menu.</p>
             <div className="space-y-2">
-              {navOrder.map((id, index) => {
+              {(navOrder || []).map((id, index) => {
                 const item = ALL_NAV_ITEMS.find(i => i.id === id);
                 if (!item) return null;
-                const isHidden = hiddenNavItems.includes(id);
+                const isHidden = (hiddenNavItems || []).includes(id);
                 
                 return (
                   <div key={id} className="flex items-center justify-between p-3 bg-neutral-950 rounded-xl border border-neutral-800">

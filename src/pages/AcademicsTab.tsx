@@ -5,11 +5,30 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getFromCache, saveToCache, CACHE_KEYS } from '../utils/persistence';
 import { DndContext, closestCenter, useSensor, useSensors, PointerSensor, KeyboardSensor, DragOverlay, defaultDropAnimationSideEffects, useDroppable, pointerWithin, rectIntersection } from '@dnd-kit/core';
+import { snapCenterToCursor } from '@dnd-kit/modifiers';
 import { SortableContext, rectSortingStrategy, useSortable, arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import ProfilePopover from '../components/ProfilePopover';
-
 import OptimizedImage from '../components/OptimizedImage';
+
+const PreviewImage = ({ src, alt, ext, getFileIcon }: { src: string, alt: string, ext: string, getFileIcon: any }) => {
+  const [loaded, setLoaded] = useState(false);
+  return (
+    <div className="relative w-full h-full flex items-center justify-center">
+      <img
+        src={src}
+        alt={alt}
+        className={clsx(
+          "max-w-full max-h-full object-contain transition-all duration-500",
+          loaded ? "blur-0 opacity-100" : "blur-lg opacity-50 grayscale"
+        )}
+        onLoad={() => setLoaded(true)}
+        referrerPolicy="no-referrer"
+      />
+      {!loaded && <div className="absolute inset-0 flex items-center justify-center">{getFileIcon(ext, "w-16 h-16 opacity-30 animate-pulse")}</div>}
+    </div>
+  );
+};
 
 const MOCK_FOLDERS = [
   { id: 'f1', courseId: '1', name: 'Week 1: Basics', parentId: null },
@@ -777,9 +796,9 @@ export default function AcademicsTab() {
   }, [availableCourses, myCourses]);
 
   const filteredAvailableCourses = availableCourses.filter(course => {
-    const matchesSearch = course.name.toLowerCase().includes(courseSearchQuery.toLowerCase()) || 
-                          (course.description && course.description.toLowerCase().includes(courseSearchQuery.toLowerCase())) ||
-                          course.code.toLowerCase().includes(courseSearchQuery.toLowerCase());
+    const matchesSearch = course?.name?.toLowerCase().includes(courseSearchQuery?.toLowerCase() || '') || 
+                          (course?.description && course.description.toLowerCase().includes(courseSearchQuery?.toLowerCase() || '')) ||
+                          course?.code?.toLowerCase().includes(courseSearchQuery?.toLowerCase() || '');
     
     let matchesCategory = selectedCategory === 'All';
     if (!matchesCategory && course.tags) {
@@ -818,7 +837,7 @@ export default function AcademicsTab() {
     .filter(f => f.parentId === currentFolderId)
     .sort((a, b) => (a.order || 0) - (b.order || 0));
   
-  const filteredCourseFiles = courseFiles.filter(f => f.folderId === currentFolderId && f.name.toLowerCase().includes(search.toLowerCase()));
+  const filteredCourseFiles = courseFiles.filter(f => f.folderId === currentFolderId && f?.name?.toLowerCase().includes(search?.toLowerCase() || ''));
   
   const approvedFiles = [...filteredCourseFiles]
     .filter(f => f.status === 'APPROVED')
@@ -1632,11 +1651,11 @@ export default function AcademicsTab() {
                 </div>
               </div>
               
-              <div className="flex-1 bg-black/50 relative overflow-hidden flex items-center justify-center">
+              <div className="flex-1 bg-black/50 relative overflow-hidden flex items-center justify-center p-4">
                 {(() => {
                   const ext = (previewFile.name.split('.').pop() || '').toLowerCase();
                   if (['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(ext)) {
-                    return <img src={previewFile.url} alt={previewFile.name} className="max-w-full max-h-full object-contain" />;
+                    return <PreviewImage src={previewFile.url} alt={previewFile.name} ext={ext} getFileIcon={getFileIcon} />;
                   } else if (['mp4', 'webm', 'mov'].includes(ext)) {
                     return <video src={previewFile.url} controls className="max-w-full max-h-full" />;
                   } else if (['pdf'].includes(ext)) {
@@ -1699,15 +1718,15 @@ export default function AcademicsTab() {
         )}
       </AnimatePresence>
 
-      <DragOverlay dropAnimation={null}>
+      <DragOverlay dropAnimation={null} modifiers={[snapCenterToCursor]}>
         {draggedItem ? (
           draggedItem.type === 'folder' ? (
-            <div className="w-60 pointer-events-none">
+            <div className="w-[280px] h-[80px] pointer-events-none">
                {(() => {
                  const folder = courseFolders.find(f => f.id === draggedItem.id);
                  if (!folder) return null;
                  return (
-                   <div className="w-full bg-neutral-900 border-2 border-primary-500 rounded-xl p-4 flex items-center gap-3 shadow-[0_30px_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                   <div className="w-full h-full scale-75 origin-center opacity-90 bg-neutral-900 border-2 border-primary-500 rounded-xl p-4 flex items-center gap-3 shadow-[0_30px_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
                      <Folder className="w-8 h-8 text-primary-400" fill="currentColor" fillOpacity={0.2} />
                      <span className="font-medium text-neutral-200 truncate flex-1">{folder.name}</span>
                    </div>
@@ -1715,19 +1734,19 @@ export default function AcademicsTab() {
                })()}
             </div>
           ) : (
-            <div className="w-64 pointer-events-none">
+            <div className="w-[280px] h-[160px] pointer-events-none">
               {(() => {
                 const file = courseFiles.find(f => f.id === draggedItem.id);
                 if (!file) return null;
                 return (
-                  <div className="w-full bg-neutral-900 border-2 border-primary-500 rounded-xl p-5 flex flex-col shadow-[0_30px_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
+                  <div className="w-full h-full scale-75 origin-center opacity-90 bg-neutral-900 border-2 border-primary-500 rounded-xl p-5 flex flex-col shadow-[0_30px_60px_rgba(0,0,0,0.6)] backdrop-blur-xl">
                     <div className="flex justify-between items-start mb-4">
                       <div className="p-3 bg-neutral-950 rounded-lg border border-neutral-800">
                         {getFileIcon(file.name.split('.').pop() || 'pdf', "w-7 h-7")}
                       </div>
                     </div>
                     <h4 className="font-semibold text-neutral-200 text-sm mb-1 truncate">{file.name}</h4>
-                    <div className="flex items-center justify-between text-[10px] text-neutral-500 mt-4 opacity-80">
+                    <div className="flex items-center justify-between text-[10px] text-neutral-500 mt-auto opacity-80">
                        <span className="font-medium">{file.size || 'Unknown size'}</span>
                        <span>{new Date(file.createdAt).toLocaleDateString()}</span>
                     </div>

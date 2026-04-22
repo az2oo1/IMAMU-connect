@@ -88,8 +88,10 @@ model NewsArticle {
   slug        String   @unique
   title       String
   content     String
-  photoUrl    String?
+  photoUrl    String?  // Main/cover image
+  images      String?  // JSON stringified array of multiple image URLs
   tag         String?
+  isArchived  Boolean  @default(false)
   
   authorId    String
   author      User     @relation(fields: [authorId], references: [id])
@@ -98,6 +100,11 @@ model NewsArticle {
   club        Club?    @relation(fields: [clubId], references: [id])
   
   createdAt   DateTime @default(now())
+}
+
+model NewsTag {
+  id        String   @id @default(uuid())
+  name      String   @unique
 }
 
 model Course {
@@ -188,6 +195,9 @@ model Message {
   deletedForAll Boolean @default(false)
   deletedBy   User[]   @relation("MessageDeletedBy")
 
+  pinnedUntil DateTime?
+  isEdited    Boolean  @default(false)
+
   createdAt   DateTime @default(now())
 }
 
@@ -259,6 +269,17 @@ model Club {
   members     ClubMember[]
   links       ClubLink[]
   articles    NewsArticle[]
+  imageHistory ClubImageHistory[]
+}
+
+model ClubImageHistory {
+  id        String   @id @default(uuid())
+  clubId    String
+  type      String   // 'AVATAR' or 'BANNER'
+  url       String
+  createdAt DateTime @default(now())
+  
+  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model ClubLink {

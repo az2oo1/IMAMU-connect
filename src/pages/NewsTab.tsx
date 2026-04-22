@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { Calendar, Clock, ChevronRight, Newspaper, ArrowRight } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -70,16 +70,85 @@ const NEWS_ITEMS = [
   }
 ];
 
-const CATEGORIES = ["All", "Following", "Campus", "Academic", "Sports", "Events"];
+const CATEGORIES = ["All", "Campus", "Academic", "Sports", "Events"];
 
 export default function NewsTab() {
   const [activeCategory, setActiveCategory] = useState("All");
-  const [selectedArticle, setSelectedArticle] = useState<typeof NEWS_ITEMS[0] | null>(null);
+  const [articles, setArticles] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [dynamicTags, setDynamicTags] = useState<string[]>([]);
+  const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
   const dragScroll = useDraggableScroll<HTMLDivElement>();
 
-  const filteredNews = NEWS_ITEMS.filter(item => {
+  useEffect(() => {
+    fetch('/api/news-tags')
+      .then(res => res.json())
+      .then(data => {
+        if (data.tags) {
+          setDynamicTags(["All", ...data.tags.map((t: any) => t.name)]);
+        }
+      })
+      .catch(console.error);
+
+    fetch('/api/news')
+      .then(res => res.json())
+      .then(data => {
+        // Map database articles to match the required properties for the frontend
+        const mapped = data.articles.map((a: any) => {
+          let parsedImages: string[] = [];
+          if (a.images) {
+             try {
+               parsedImages = typeof a.images === 'string' ? JSON.parse(a.images) : a.images;
+             } catch (e) {
+               // ignore
+             }
+          }
+
+          return {
+            ...a,
+            category: a.tag || 'General',
+            date: new Date(a.createdAt).toLocaleDateString(),
+            readTime: '5 min read',
+            image: a.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null) || 'https://picsum.photos/seed/news/800/600',
+            images: parsedImages,
+            excerpt: a.content.substring(0, 150) + '...',
+            author: a.club ? { id: a.clubId, isClub: true, name: a.club.name, avatar: a.club.avatarUrl } : a.author || 'University Press',
+            authorAvatar: a.club?.avatarUrl || a.author?.avatarUrl
+          };
+        });
+        setArticles(mapped);
+        setLoading(false);
+        
+        // Handle deep link
+        const params = new URLSearchParams(window.location.search);
+        const articleId = params.get('articleId');
+        if (articleId) {
+          const found = mapped.find((art: any) => art.id === articleId);
+          if (found) setSelectedArticle(found);
+        }
+      })
+      .catch(err => {
+        console.error('Failed to fetch news:', err);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleArticleOpen = (article: any) => {
+    setSelectedArticle(article);
+    const url = new URL(window.location.href);
+    url.searchParams.set('articleId', article.id);
+    window.history.pushState({}, '', url);
+  };
+  
+  const handleArticleClose = () => {
+    setSelectedArticle(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('articleId');
+    window.history.pushState({}, '', url);
+  };
+
+  const filteredNews = articles.filter(item => {
     if (activeCategory === "All") return true;
-    if (activeCategory === "Following") return item.isFollowedAuthor;
     return item.category === activeCategory;
   });
 
@@ -114,7 +183,7 @@ export default function NewsTab() {
             {...dragScroll}
             className="flex gap-1 overflow-x-auto scrollbar-hide select-none"
           >
-            {CATEGORIES.map((category) => (
+            {(dynamicTags.length > 1 ? dynamicTags : CATEGORIES).map((category) => (
               <button
                 key={category}
                 onClick={() => setActiveCategory(category)}
@@ -145,7 +214,7 @@ export default function NewsTab() {
             animate={{ y: 0, opacity: 1 }}
             transition={{ duration: 0.5 }}
             className="mb-10 group cursor-pointer"
-            onClick={() => setSelectedArticle(featuredPost)}
+            onClick={() => handleArticleOpen(featuredPost)}
           >
             <div className="relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 aspect-[2/1] md:aspect-[2.5/1]">
               <OptimizedImage 
@@ -190,7 +259,7 @@ export default function NewsTab() {
               animate={{ y: 0, opacity: 1 }}
               transition={{ delay: index * 0.1 + 0.2 }}
               key={post.id}
-              onClick={() => setSelectedArticle(post)}
+              onClick={() => handleArticleOpen(post)}
               className="group cursor-pointer bg-neutral-900/40 backdrop-blur-md border border-white/5 hover:border-primary-500/30 rounded-3xl overflow-hidden transition-all duration-300 flex flex-col"
             >
               <div className="relative h-48 overflow-hidden">
@@ -238,7 +307,7 @@ export default function NewsTab() {
         <NewsArticleModal 
           article={selectedArticle} 
           isOpen={!!selectedArticle} 
-          onClose={() => setSelectedArticle(null)} 
+          onClose={handleArticleClose} 
         />
       </div>
     </motion.div>

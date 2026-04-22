@@ -32,7 +32,9 @@ export default function OptimizedImage({
   // banner: profile banner (1200px)
   
   let sizeParam = '';
-  if (src.includes('picsum.photos')) {
+  let finalSrc = src;
+  
+  if (src && src.includes('picsum.photos')) {
     if (variant === 'small') sizeParam = '50/50';
     else if (variant === 'medium') sizeParam = '200/200';
     else if (variant === 'large') sizeParam = '600/600';
@@ -41,7 +43,14 @@ export default function OptimizedImage({
     // Replace size in picsum URL if it's there
     // E.g. picsum.photos/seed/abc/150/150 -> picsum.photos/seed/abc/sizeParam
     const baseUrl = src.split('/').slice(0, -2).join('/');
-    src = `${baseUrl}/${sizeParam}`;
+    finalSrc = `${baseUrl}/${sizeParam}`;
+  } else if (src && src.startsWith('/uploads/')) {
+    let width = 200;
+    if (variant === 'small') width = 50;
+    else if (variant === 'medium') width = 200;
+    else if (variant === 'large') width = 600;
+    else if (variant === 'banner') width = 1200;
+    finalSrc = `/api/image?url=${encodeURIComponent(src)}&w=${width}`;
   }
 
   return (
@@ -50,7 +59,7 @@ export default function OptimizedImage({
         <div 
           className="absolute inset-0 grayscale blur-xl opacity-50 scale-110"
           style={{
-            backgroundImage: `url(${src})`,
+            backgroundImage: `url(${finalSrc})`,
             backgroundSize: 'cover',
             backgroundPosition: 'center'
           }}
@@ -59,8 +68,8 @@ export default function OptimizedImage({
       
       <AnimatePresence mode="wait">
         <motion.img
-          key={src}
-          src={src}
+          key={finalSrc}
+          src={finalSrc}
           alt={alt}
           onLoad={() => setIsLoaded(true)}
           initial={{ opacity: 0 }}

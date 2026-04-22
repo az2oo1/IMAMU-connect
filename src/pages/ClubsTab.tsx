@@ -137,8 +137,8 @@ export default function ClubsTab() {
 
   const filteredClubs = clubs.filter(club => {
     const matchesCategory = activeCategory === "All" || (club.tags && club.tags.includes(activeCategory));
-    const matchesSearch = club.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          (club.description && club.description.toLowerCase().includes(searchQuery.toLowerCase()));
+    const matchesSearch = club?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
+                          (club.description && club.description.toLowerCase().includes(searchQuery?.toLowerCase() || ''));
     return matchesCategory && matchesSearch;
   });
 

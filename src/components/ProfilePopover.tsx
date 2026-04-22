@@ -25,7 +25,7 @@ export default function ProfilePopover({ children, username, user: initialUser }
   const [loading, setLoading] = useState(false);
   const [isFollowing, setIsFollowing] = useState(initialUser?.isFollowing || false);
   const [position, setPosition] = useState<'bottom' | 'top'>('bottom');
-  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const [coords, setCoords] = useState<{ top?: number, bottom?: number, left: number }>({ top: 0, left: 0 });
   const popoverRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const timeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -105,9 +105,10 @@ export default function ProfilePopover({ children, username, user: initialUser }
       }
 
       setCoords({
-        top: newPos === 'bottom' ? rect.bottom + 8 : rect.top - 8,
+        top: newPos === 'bottom' ? rect.bottom + 8 : undefined,
+        bottom: newPos === 'top' ? window.innerHeight - rect.top + 8 : undefined,
         left: left
-      });
+      } as any);
     }
   }, [isOpen]);
 
@@ -142,9 +143,9 @@ export default function ProfilePopover({ children, username, user: initialUser }
               transition={{ duration: 0.15 }}
               style={{
                 position: 'fixed',
-                top: coords.top,
+                ...(coords.top !== undefined ? { top: coords.top } : {}),
+                ...(coords.bottom !== undefined ? { bottom: coords.bottom } : {}),
                 left: coords.left,
-                transform: `${position === 'top' ? 'translateY(-100%)' : ''}`,
                 zIndex: 99999
               }}
               className="w-72 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden"

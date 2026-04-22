@@ -212,8 +212,8 @@ export default function ReportsTab() {
   const filteredReports = useMemo(() => {
     return reports.filter(report => 
       report.status === activeTab && (
-        report.reason.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        report.type.toLowerCase().includes(searchQuery.toLowerCase())
+        report?.reason?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+        report?.type?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
       )
     );
   }, [reports, activeTab, searchQuery]);

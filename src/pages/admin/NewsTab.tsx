@@ -3,8 +3,10 @@ import { Search, Trash2, Calendar } from 'lucide-react';
 
 export default function NewsTab() {
   const [articles, setArticles] = useState<any[]>([]);
+  const [tags, setTags] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [newTag, setNewTag] = useState('');
 
   const fetchArticles = async () => {
     try {
@@ -22,8 +24,19 @@ export default function NewsTab() {
     }
   };
 
+  const fetchTags = async () => {
+    try {
+      const res = await fetch('/api/news-tags');
+      const data = await res.json();
+      setTags(data.tags);
+    } catch (err) {
+      console.error('Failed to fetch tags', err);
+    }
+  };
+
   useEffect(() => {
     fetchArticles();
+    fetchTags();
   }, []);
 
   const handleDeleteArticle = async (id: string) => {
@@ -41,9 +54,45 @@ export default function NewsTab() {
     }
   };
 
+  const handleAddTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTag.trim()) return;
+    try {
+      const res = await fetch('/api/admin/news-tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ name: newTag.trim() })
+      });
+      if (res.ok) {
+        setNewTag('');
+        fetchTags();
+      }
+    } catch (err) {
+      console.error('Failed to add tag', err);
+    }
+  };
+
+  const handleDeleteTag = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this tag?')) return;
+    try {
+      const res = await fetch(`/api/admin/news-tags/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        fetchTags();
+      }
+    } catch (err) {
+      console.error('Failed to delete tag', err);
+    }
+  };
+
   const filteredArticles = articles.filter(article => 
-    article.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    article.author.username.toLowerCase().includes(searchQuery.toLowerCase())
+    article?.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    article?.author?.username?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   return (
@@ -53,7 +102,7 @@ export default function NewsTab() {
         <p className="text-neutral-400">Manage news articles written by users and news writers.</p>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
+      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl mb-12">
         <div className="p-4 border-b border-neutral-800 flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
@@ -87,9 +136,11 @@ export default function NewsTab() {
                   <td colSpan={4} className="p-8 text-center text-neutral-500">No articles found.</td>
                 </tr>
               ) : filteredArticles.map((article) => (
-                <tr key={article.id} className="border-b border-neutral-800 hover:bg-neutral-800/30 transition-colors">
+                <tr key={article.id} className={`border-b border-neutral-800 hover:bg-neutral-800/30 transition-colors ${article.isArchived ? 'opacity-50' : ''}`}>
                   <td className="p-4">
-                    <p className="font-medium text-white line-clamp-1">{article.title}</p>
+                    <p className="font-medium text-white line-clamp-1">
+                      {article.title} {article.isArchived && <span className="text-secondary-500 text-xs">(Archived)</span>}
+                    </p>
                     {article.tag && (
                       <span className="inline-block mt-1 px-2 py-0.5 rounded text-xs font-medium bg-neutral-800 text-neutral-400">
                         {article.tag}
@@ -119,6 +170,38 @@ export default function NewsTab() {
               ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="mb-8 mt-16">
+        <h2 className="text-2xl font-bold text-white mb-2">Tag Management</h2>
+        <p className="text-neutral-400">Add or remove predefined tags for news articles.</p>
+      </div>
+
+      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-xl p-6">
+        <form onSubmit={handleAddTag} className="flex items-center gap-4 mb-6">
+          <input
+            type="text"
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            placeholder="New tag name (e.g. Tryouts, Exams)"
+            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+          />
+          <button type="submit" className="px-6 py-2.5 bg-primary-500 text-white font-bold rounded-xl hover:bg-primary-600 transition-colors">
+            Add Tag
+          </button>
+        </form>
+
+        <div className="flex flex-wrap gap-3">
+          {tags.map(tag => (
+            <div key={tag.id} className="flex items-center gap-2 bg-neutral-800 px-4 py-2 rounded-xl text-neutral-300">
+              <span className="font-medium">{tag.name}</span>
+              <button onClick={() => handleDeleteTag(tag.id)} className="text-neutral-500 hover:text-red-400 p-0.5 rounded transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {tags.length === 0 && <span className="text-neutral-500 text-sm">No tags available.</span>}
         </div>
       </div>
     </div>

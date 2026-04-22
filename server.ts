@@ -172,6 +172,46 @@ async function startServer() {
     res.json({ url });
   });
 
+  // Dynamic Image Resizing
+  app.get('/api/image', async (req, res) => {
+    try {
+      const { url, w, h } = req.query;
+      if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL is required' });
+
+      // Handle picsum optimization locally on frontend or redirect
+      if (url.includes('picsum.photos')) {
+         return res.redirect(url);
+      }
+
+      const relativeUrl = url.startsWith('/') ? url.substring(1) : url;
+      const filePath = path.join(process.cwd(), relativeUrl);
+      
+      const uploadsDir = path.join(process.cwd(), 'uploads');
+      if (!filePath.startsWith(uploadsDir) || !fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'Image not found' });
+      }
+
+      const width = w ? parseInt(w as string) : undefined;
+      const height = h ? parseInt(h as string) : undefined;
+
+      if (!width && !height) {
+        return res.sendFile(filePath);
+      }
+
+      const sharp = require('sharp');
+      const stream = sharp(filePath)
+        .resize(width, height, { fit: 'cover', withoutEnlargement: true })
+        .jpeg({ quality: 80 });
+
+      res.setHeader('Content-Type', 'image/jpeg');
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+      stream.pipe(res);
+    } catch (err) {
+      console.error('Image processing error:', err);
+      res.status(500).json({ error: 'Failed to process image' });
+    }
+  });
+
   // File Download Proxy
   app.get('/api/download', (req, res) => {
     const { url, filename } = req.query;
@@ -528,6 +568,18 @@ async function startServer() {
     }
   });
 
+  app.get('/api/clubs/:id/image-history', authenticateToken, async (req: any, res) => {
+    try {
+      const history = await prisma.clubImageHistory.findMany({
+        where: { clubId: req.params.id },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json({ history });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch image history' });
+    }
+  });
+
   app.put('/api/clubs/:id', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
@@ -541,6 +593,20 @@ async function startServer() {
       }
 
       const { name, description, avatarUrl, bannerUrl, tags, links } = req.body;
+
+      const existingClub = await prisma.club.findUnique({ where: { id: req.params.id } });
+      if (existingClub) {
+        if (avatarUrl && existingClub.avatarUrl !== avatarUrl) {
+          await prisma.clubImageHistory.create({
+            data: { clubId: req.params.id, type: 'AVATAR', url: avatarUrl }
+          });
+        }
+        if (bannerUrl && existingClub.bannerUrl !== bannerUrl) {
+          await prisma.clubImageHistory.create({
+            data: { clubId: req.params.id, type: 'BANNER', url: bannerUrl }
+          });
+        }
+      }
 
       const updatedClub = await prisma.club.update({
         where: { id: req.params.id },
@@ -575,7 +641,7 @@ async function startServer() {
         return res.status(403).json({ error: 'Not authorized to post news for this club' });
       }
 
-      const { title, content, imageUrl, photoUrl } = req.body;
+      const { title, content, imageUrl, photoUrl, tag, images } = req.body;
 
       const article = await prisma.newsArticle.create({
         data: {
@@ -583,6 +649,8 @@ async function startServer() {
           title,
           content,
           photoUrl: photoUrl || imageUrl,
+          images: images ? JSON.stringify(images) : undefined,
+          tag,
           authorId: req.user.userId,
           clubId: req.params.id
         }
@@ -591,6 +659,61 @@ async function startServer() {
       res.json({ article });
     } catch (error) {
       res.status(500).json({ error: 'Failed to post article' });
+    }
+  });
+
+  app.put('/api/clubs/:id/articles/:articleId', authenticateToken, async (req: any, res) => {
+    try {
+      const membership = await prisma.clubMember.findUnique({
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+      });
+      
+      if (!membership || !membership.isAdmin) {
+        return res.status(403).json({ error: 'Not authorized to edit news for this club' });
+      }
+
+      const { title, content, photoUrl, tag, images } = req.body;
+
+      const article = await prisma.newsArticle.update({
+        where: { id: req.params.articleId },
+        data: {
+          title,
+          content,
+          photoUrl,
+          images: images ? JSON.stringify(images) : undefined,
+          tag,
+        }
+      });
+
+      res.json({ article });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to edit article' });
+    }
+  });
+
+  app.patch('/api/clubs/:id/articles/:articleId/archive', authenticateToken, async (req: any, res) => {
+    try {
+      const membership = await prisma.clubMember.findUnique({
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+      });
+      
+      if (!membership || !membership.isAdmin) {
+        return res.status(403).json({ error: 'Not authorized to edit news for this club' });
+      }
+
+      const article = await prisma.newsArticle.findUnique({ where: { id: req.params.articleId } });
+      if (!article) return res.status(404).json({ error: 'Article not found' });
+
+      const updated = await prisma.newsArticle.update({
+        where: { id: req.params.articleId },
+        data: {
+          isArchived: !article.isArchived
+        }
+      });
+
+      res.json({ article: updated });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to archive article' });
     }
   });
 
@@ -1336,88 +1459,92 @@ async function startServer() {
   app.get('/api/groups/:id/messages', authenticateToken, async (req: any, res) => {
     try {
       const groupId = req.params.id;
-      const { limit = 100, cursor, targetMessageId } = req.query;
+      const { limit = 50, cursor, direction = 'older', targetMessageId } = req.query;
       const take = parseInt(limit as string, 10);
 
       // Ensure user is member
-      const group = await prisma.group.findFirst({
+      const groupMembers = await prisma.group.findFirst({
         where: { id: groupId, members: { some: { id: req.user.userId } } }
       });
-      if (!group) return res.status(403).json({ error: 'Not a member of this group' });
+      if (!groupMembers) return res.status(403).json({ error: 'Not a member of this group' });
 
       let messages: any[] = [];
-      let hasMore = false;
+      let hasMoreOlder = false;
+      let hasMoreNewer = false;
+
+      const messageInclude = {
+        author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+        replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+        deletedBy: { select: { id: true } }
+      };
 
       if (targetMessageId) {
-        // Fetch surrounding context: up to 25 before and 25 after
+        // Fetch surrounding context: up to half before and half after
         const halfTake = Math.floor(take / 2);
         
-        try {
-          const older = await prisma.message.findMany({
-            where: { groupId },
-            take: halfTake,
-            cursor: { id: targetMessageId as string },
-            orderBy: { createdAt: 'desc' },
-            include: {
-              author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
-              replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
-              deletedBy: { select: { id: true } }
-            }
-          });
+        const older = await prisma.message.findMany({
+          where: { groupId },
+          take: halfTake,
+          cursor: { id: targetMessageId as string },
+          orderBy: { createdAt: 'desc' },
+          include: messageInclude
+        });
 
-          const newer = await prisma.message.findMany({
-            where: { groupId },
-            take: halfTake,
-            skip: 1, // Skip the target message itself (already in older)
-            cursor: { id: targetMessageId as string },
-            orderBy: { createdAt: 'asc' },
-            include: {
-              author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
-              replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
-              deletedBy: { select: { id: true } }
-            }
-          });
+        const newer = await prisma.message.findMany({
+          where: { groupId },
+          take: halfTake,
+          skip: older.length > 0 ? 1 : 0, // skip if the message itself is included
+          cursor: older.length > 0 ? { id: targetMessageId as string } : undefined,
+          orderBy: { createdAt: 'asc' },
+          include: messageInclude
+        });
 
-          older.reverse(); // Now chronological
-          messages = [...older, ...newer];
-          hasMore = older.length === halfTake; // Assume more history exists
-        } catch (e) {
-          // Fallback if targetMessageId is invalid / not found
-           messages = await prisma.message.findMany({
+        older.reverse(); // chronological
+        messages = [...older, ...newer];
+        
+        hasMoreOlder = older.length === halfTake;
+        hasMoreNewer = newer.length === halfTake;
+      } else if (cursor) {
+        if (direction === 'newer') {
+          messages = await prisma.message.findMany({
             where: { groupId },
             take: take,
-            skip: cursor ? 1 : 0,
-            cursor: cursor ? { id: cursor as string } : undefined,
-            include: {
-              author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
-              replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
-              deletedBy: { select: { id: true } }
-            },
-            orderBy: { createdAt: 'desc' }
+            skip: 1,
+            cursor: { id: cursor as string },
+            orderBy: { createdAt: 'asc' },
+            include: messageInclude
+          });
+          hasMoreNewer = messages.length === take;
+          hasMoreOlder = true; // We know there is older content because we have a cursor
+        } else {
+          messages = await prisma.message.findMany({
+            where: { groupId },
+            take: take,
+            skip: 1,
+            cursor: { id: cursor as string },
+            orderBy: { createdAt: 'desc' },
+            include: messageInclude
           });
           messages.reverse();
-          hasMore = messages.length === take;
+          hasMoreOlder = messages.length === take;
+          hasMoreNewer = true; // We know there is newer content because we have a cursor
         }
       } else {
+        // Default: newest messages
         messages = await prisma.message.findMany({
           where: { groupId },
           take: take,
-          skip: cursor ? 1 : 0,
-          cursor: cursor ? { id: cursor as string } : undefined,
-          include: {
-            author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
-            replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
-            deletedBy: { select: { id: true } }
-          },
-          orderBy: { createdAt: 'desc' }
+          orderBy: { createdAt: 'desc' },
+          include: messageInclude
         });
         messages.reverse();
-        hasMore = messages.length === take;
+        hasMoreOlder = messages.length === take;
+        hasMoreNewer = false; // We are at the bottom
       }
 
       // Filter out messages deleted for this user
       const filteredMessages = messages.map(msg => {
-        const deletedForMe = msg.deletedBy.some(u => u.id === req.user.userId);
+        const deletedForMe = msg.deletedBy.some((u: any) => u.id === req.user.userId);
         return {
           ...msg,
           deletedForMe,
@@ -1425,12 +1552,34 @@ async function startServer() {
         };
       });
 
+      // Fetch active pinned messages for this group
+      let activePinnedMessages: any[] = [];
+      if (!cursor && !targetMessageId) {
+         activePinnedMessages = await prisma.message.findMany({
+            where: {
+               groupId, 
+               pinnedUntil: { gt: new Date() }
+            },
+            orderBy: { pinnedUntil: 'desc' },
+            include: messageInclude
+         });
+         activePinnedMessages = activePinnedMessages.map(msg => ({
+           ...msg,
+           content: msg.deletedForAll ? 'This message was deleted' : msg.content,
+           deletedForMe: msg.deletedBy.some((u: any) => u.id === req.user.userId)
+         }));
+      }
+
       res.json({ 
         messages: filteredMessages,
-        nextCursor: messages.length > 0 ? messages[0].id : null,
-        hasMore
+        pinnedMessages: activePinnedMessages,
+        nextCursorOlder: messages.length > 0 ? messages[0].id : null,
+        nextCursorNewer: messages.length > 0 ? messages[messages.length - 1].id : null,
+        hasMoreOlder,
+        hasMoreNewer
       });
     } catch (error) {
+      console.error('Error fetching messages:', error);
       res.status(500).json({ error: 'Failed to fetch messages' });
     }
   });
@@ -1553,6 +1702,91 @@ async function startServer() {
     });
   });
 
+  app.put('/api/groups/:id/messages/:messageId', authenticateToken, async (req: any, res) => {
+    try {
+      const { id: groupId, messageId } = req.params;
+      const { content } = req.body;
+
+      const message = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: { author: true }
+      });
+
+      if (!message) return res.status(404).json({ error: 'Message not found' });
+      if (message.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+
+      // Check if it's within 10 minutes
+      const tenMinutes = 10 * 60 * 1000;
+      if (Date.now() - new Date(message.createdAt).getTime() > tenMinutes) {
+        return res.status(400).json({ error: 'Messages can only be edited within 10 minutes of sending' });
+      }
+
+      const updated = await prisma.message.update({
+        where: { id: messageId },
+        data: { content, isEdited: true },
+        include: {
+          author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+          replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+          deletedBy: { select: { id: true } }
+        }
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`group_${groupId}`).emit('message_updated', { message: { ...updated, deletedForMe: false } });
+      }
+
+      res.json({ message: updated });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update message' });
+    }
+  });
+
+  app.post('/api/groups/:id/messages/:messageId/pin', authenticateToken, async (req: any, res) => {
+    try {
+      const { id: groupId, messageId } = req.params;
+      const { durationHours } = req.body;
+
+      const group = await prisma.group.findUnique({
+        where: { id: groupId },
+        include: { admins: true }
+      });
+
+      if (!group) return res.status(404).json({ error: 'Group not found' });
+      
+      const isAdmin = group.admins.some(a => a.id === req.user.userId) || req.user.role === 'ADMIN';
+      if (!isAdmin) return res.status(403).json({ error: 'Only admins can pin messages' });
+
+      let pinnedUntil: Date | null = null;
+      if (durationHours && durationHours > 0) {
+         pinnedUntil = new Date(Date.now() + durationHours * 60 * 60 * 1000);
+      } else if (durationHours === -1) {
+         pinnedUntil = new Date('9999-12-31T23:59:59Z'); // Forever
+      } else {
+         pinnedUntil = null; // Unpin
+      }
+
+      const updated = await prisma.message.update({
+        where: { id: messageId },
+        data: { pinnedUntil },
+        include: {
+          author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+          replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+          deletedBy: { select: { id: true } }
+        }
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`group_${groupId}`).emit('message_updated', { message: { ...updated, deletedForMe: false } });
+      }
+
+      res.json({ message: updated });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to pin message' });
+    }
+  });
+
   app.delete('/api/groups/:id/messages/:messageId', authenticateToken, async (req: any, res) => {
     try {
       const { id: groupId, messageId } = req.params;
@@ -1659,6 +1893,50 @@ async function startServer() {
       res.json({ user, reportsMade, reportsReceived });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch user profile' });
+    }
+  });
+
+  app.get('/api/news', async (req, res) => {
+    try {
+      const articles = await prisma.newsArticle.findMany({
+        where: { isArchived: false },
+        orderBy: { createdAt: 'desc' },
+        include: {
+          author: { select: { name: true, username: true, avatarUrl: true } },
+          club: { select: { id: true, name: true, avatarUrl: true } }
+        }
+      });
+      res.json({ articles });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch news' });
+    }
+  });
+
+  app.get('/api/news-tags', async (req, res) => {
+    try {
+      const tags = await prisma.newsTag.findMany({ orderBy: { name: 'asc' } });
+      res.json({ tags });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch tags' });
+    }
+  });
+
+  app.post('/api/admin/news-tags', requireAdmin, async (req, res) => {
+    try {
+      const { name } = req.body;
+      const tag = await prisma.newsTag.create({ data: { name } });
+      res.json({ tag });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create tag' });
+    }
+  });
+
+  app.delete('/api/admin/news-tags/:id', requireAdmin, async (req, res) => {
+    try {
+      await prisma.newsTag.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete tag' });
     }
   });
 
@@ -2427,7 +2705,10 @@ async function startServer() {
   });
 
   // --- VITE MIDDLEWARE ---
-  if (process.env.NODE_ENV !== 'production') {
+  const distPath = path.join(process.cwd(), 'dist');
+  const isProd = process.env.NODE_ENV === 'production' || fs.existsSync(path.join(distPath, 'index.html'));
+
+  if (!isProd) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -2435,7 +2716,6 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));

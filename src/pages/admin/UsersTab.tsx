@@ -67,10 +67,10 @@ export default function UsersTab() {
   };
 
   const filteredUsers = users.filter(user => 
-    user.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.studentEmail?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.googleEmail?.toLowerCase().includes(searchQuery.toLowerCase())
+    user?.username?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    user?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    user?.studentEmail?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
+    user?.googleEmail?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   return (

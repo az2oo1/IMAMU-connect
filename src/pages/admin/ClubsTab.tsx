@@ -72,7 +72,7 @@ export default function ClubsTab() {
   };
 
   const filteredClubs = clubs.filter(club => 
-    club.name.toLowerCase().includes(searchQuery.toLowerCase())
+    club?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
   );
 
   return (

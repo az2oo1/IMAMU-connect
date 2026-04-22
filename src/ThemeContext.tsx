@@ -26,11 +26,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   });
   const [navOrder, setNavOrder] = useState<string[]>(() => {
     const saved = localStorage.getItem('nav_order');
-    return saved ? JSON.parse(saved) : DEFAULT_NAV_ORDER;
+    return saved ? JSON.parse(saved) || DEFAULT_NAV_ORDER : DEFAULT_NAV_ORDER;
   });
   const [hiddenNavItems, setHiddenNavItems] = useState<string[]>(() => {
     const saved = localStorage.getItem('hidden_nav');
-    return saved ? JSON.parse(saved) : DEFAULT_HIDDEN_NAV;
+    return saved ? JSON.parse(saved) || DEFAULT_HIDDEN_NAV : DEFAULT_HIDDEN_NAV;
   });
 
   useEffect(() => {

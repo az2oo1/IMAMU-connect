@@ -101,13 +101,13 @@ export default function Layout() {
   ];
 
   const sortedNavItems = [...ALL_NAV_ITEMS].sort((a, b) => {
-    const indexA = navOrder.indexOf(a.to);
-    const indexB = navOrder.indexOf(b.to);
+    const indexA = (navOrder || []).indexOf(a.to);
+    const indexB = (navOrder || []).indexOf(b.to);
     return (indexA !== -1 ? indexA : 99) - (indexB !== -1 ? indexB : 99);
   });
 
-  const visibleItems = sortedNavItems.filter(item => !hiddenNavItems.includes(item.to));
-  const moreItems = sortedNavItems.filter(item => hiddenNavItems.includes(item.to));
+  const visibleItems = sortedNavItems.filter(item => !(hiddenNavItems || []).includes(item.to));
+  const moreItems = sortedNavItems.filter(item => (hiddenNavItems || []).includes(item.to));
 
   return (
     <div className="flex flex-col h-screen bg-neutral-950 text-neutral-50 overflow-hidden font-sans selection:bg-primary-500/30">
