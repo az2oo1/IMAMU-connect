@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
-import { Outlet, NavLink, useNavigate } from 'react-router-dom';
-import { Map, BookOpen, Compass, Users, User, Settings, LogOut, X, Check, Newspaper, Shield, Tent, ChevronDown, MoreHorizontal, Calendar, Bookmark, Bell, MessageSquare } from 'lucide-react';
+import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
+import { Map, BookOpen, Compass, Users, User, Settings, LogOut, X, Check, Search, Newspaper, Shield, Tent, ChevronDown, MoreHorizontal, Calendar, Bookmark, Bell, MessageSquare, Edit } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useTheme } from '../ThemeContext';
@@ -9,6 +9,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { motion, AnimatePresence } from 'motion/react';
 import AuthModal from './AuthModal';
 import OptimizedImage from './OptimizedImage';
+import GlobalSearchModal from './GlobalSearchModal';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -19,11 +20,13 @@ export default function Layout() {
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
   
   const dropdownRef = useRef<HTMLDivElement>(null);
   const moreDropdownRef = useRef<HTMLDivElement>(null);
   const notificationsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+  const location = useLocation();
   const { isAuthenticated, user, logout } = useUser();
   const { socket } = useSocket();
   const { navOrder, hiddenNavItems } = useTheme();
@@ -86,8 +89,20 @@ export default function Layout() {
         setIsNotificationsOpen(false);
       }
     }
+    
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        setIsGlobalSearchOpen(true);
+      }
+    }
+
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
   }, []);
 
   const ALL_NAV_ITEMS = [
@@ -116,7 +131,7 @@ export default function Layout() {
       <header className="bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/50 z-40 sticky top-0">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center shadow-lg shadow-primary-500/20">
+            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
               <Map className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-neutral-400">CampusHub</span>
@@ -205,7 +220,35 @@ export default function Layout() {
           {/* Profile Dropdown or Login Button */}
           <div className="flex items-center gap-3">
             {isAuthenticated && (
-              <div className="relative" ref={notificationsRef}>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsGlobalSearchOpen(true)}
+                  className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 rounded-lg hover:bg-neutral-800 transition-colors focus:outline-none"
+                  title="Search (Cmd+K)"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>Search</span>
+                  <span className="text-xs bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-500 font-mono flex items-center">
+                    <span className="text-[10px] mr-0.5">⌘</span>K
+                  </span>
+                </button>
+                <button
+                  onClick={() => setIsGlobalSearchOpen(true)}
+                  className="md:hidden p-2 text-neutral-400 hover:text-white hover:bg-neutral-900 rounded-full transition-colors focus:outline-none"
+                  title="Search"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
+                {(user?.role === 'NEWS_WRITER' || user?.role === 'ADMIN') && (
+                  <button
+                    onClick={() => navigate('/compose')}
+                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-900 rounded-full transition-colors focus:outline-none"
+                    title="Compose Article"
+                  >
+                    <Edit className="w-5 h-5" />
+                  </button>
+                )}
+                <div className="relative" ref={notificationsRef}>
                 <button 
                   onClick={handleOpenNotifications}
                   className="relative p-2 text-neutral-400 hover:text-white hover:bg-neutral-900 rounded-full transition-colors focus:outline-none"
@@ -270,6 +313,7 @@ export default function Layout() {
                     </motion.div>
                   )}
                 </AnimatePresence>
+              </div>
               </div>
             )}
 
@@ -342,6 +386,28 @@ export default function Layout() {
                           <Settings className="w-4 h-4" />
                           Settings
                         </button>
+                        {user?.clubMemberships && user.clubMemberships.length > 0 && (
+                          <div className="my-1 border-t border-neutral-800/50 pt-1">
+                            <span className="px-3 py-1 text-xs font-bold text-neutral-500 uppercase tracking-wider">Managed Clubs</span>
+                            {user.clubMemberships.map((membership: any) => (
+                              <button 
+                                key={membership.club.id}
+                                onClick={() => {
+                                  navigate(`/clubs/${membership.club.id}/manage`);
+                                  setIsProfileOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors overflow-hidden group"
+                              >
+                                {membership.club.avatarUrl ? (
+                                  <img src={membership.club.avatarUrl} alt="" className="w-4 h-4 rounded object-cover shrink-0" />
+                                ) : (
+                                  <Tent className="w-4 h-4 shrink-0 text-neutral-400 group-hover:text-primary-400" />
+                                )}
+                                <span className="truncate">{membership.club.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
                         {user?.role === 'ADMIN' && (
                           <button 
                             onClick={() => {
@@ -386,7 +452,18 @@ export default function Layout() {
 
       {/* Main Content Area */}
       <main className="flex-1 overflow-hidden relative">
-        <Outlet />
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="h-full w-full overflow-y-auto"
+          >
+            <Outlet />
+          </motion.div>
+        </AnimatePresence>
       </main>
 
       {/* Mobile Bottom Navigation */}
@@ -499,6 +576,7 @@ export default function Layout() {
       </nav>
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} />
     </div>
   );
 }

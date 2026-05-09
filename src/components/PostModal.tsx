@@ -129,7 +129,7 @@ export default function PostModal({ post, isOpen, onClose }: PostModalProps) {
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-neutral-800 shrink-0 overflow-hidden">
-                        <img src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" className="w-full h-full object-cover" />
+                        <img referrerPolicy="no-referrer" src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" className="w-full h-full object-cover" />
                       </div>
                       <div>
                         <div className="bg-neutral-900 rounded-2xl rounded-tl-none px-4 py-2.5">

@@ -1,6 +1,7 @@
+import { toast } from 'sonner';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, Camera, ShieldAlert } from 'lucide-react';
+import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, Camera, ShieldAlert, BarChart2, CheckSquare } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -8,7 +9,10 @@ import { getFromCache, saveToCache, CACHE_KEYS } from '../utils/persistence';
 import ProfilePopover from '../components/ProfilePopover';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
 import FormattedText from '../components/FormattedText';
+import LinkPreview from '../components/LinkPreview';
 import TagInput from '../components/TagInput';
+import CreatePollModal from '../components/CreatePollModal';
+import MessagePoll from '../components/MessagePoll';
 
 const INITIAL_JOINED = [
   { id: '1', name: 'CS101', members: 142, unread: 3, description: 'Intro to Computer Science', tags: 'Computer Science' },
@@ -61,7 +65,17 @@ type Message = {
 };
 
 import { useUser } from '../contexts/UserContext';
+import CourseDetailsModal from '../components/CourseDetailsModal';
 import { useSocket } from '../contexts/SocketContext';
+
+const sessionCacheGroups: Record<string, {
+  messages: any[];
+  hasMoreOlder: boolean;
+  hasMoreNewer: boolean;
+  nextCursorOlder: string | null;
+  nextCursorNewer: string | null;
+  scrollTop?: number;
+}> = {};
 
 export default function GroupsTab() {
   const [message, setMessage] = useState('');
@@ -93,12 +107,14 @@ export default function GroupsTab() {
   const [joinedGroups, setJoinedGroups] = useState<any[]>(getFromCache(CACHE_KEYS.GROUPS + '_groups', []));
   const [availableGroups, setAvailableGroups] = useState<any[]>([]);
   const [showJoinModal, setShowJoinModal] = useState(false);
+  const [showCourseOverview, setShowCourseOverview] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showGroupInfo, setShowGroupInfo] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [reportingMessage, setReportingMessage] = useState<any | null>(null);
   const [reportReason, setReportReason] = useState('');
   const [isSubmittingReport, setIsSubmittingReport] = useState(false);
+  const [showPollModal, setShowPollModal] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState('');
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
   const [joinSearchQuery, setJoinSearchQuery] = useState('');
@@ -120,11 +136,32 @@ export default function GroupsTab() {
   const { user } = useUser();
   const { socket } = useSocket();
   const dragScroll = useDraggableScroll<HTMLDivElement>();
+  const activeGroupIdRef = useRef(activeGroupId);
+
+  const isTransitioningGroup = activeGroupIdRef.current !== activeGroupId;
+  const targetId = searchParams.get('messageId');
+  const displayedMessages = isTransitioningGroup 
+    ? (sessionCacheGroups[activeGroupId]?.messages || (!targetId && messageCache[activeGroupId]) || [])
+    : messages;
+  const displayedLoading = isTransitioningGroup
+    ? displayedMessages.length === 0
+    : isLoadingMessages;
+  const displayedHasMoreOlder = isTransitioningGroup 
+    ? (sessionCacheGroups[activeGroupId]?.hasMoreOlder ?? true) 
+    : hasMoreOlder;
+  const displayedHasMoreNewer = isTransitioningGroup 
+    ? (sessionCacheGroups[activeGroupId]?.hasMoreNewer ?? false) 
+    : hasMoreNewer;
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const unreadCountRef = useRef<number>(0);
+  const isFetchingRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    activeGroupIdRef.current = activeGroupId;
+  }, [activeGroupId]);
 
   useEffect(() => {
     fetchGroups();
@@ -135,6 +172,8 @@ export default function GroupsTab() {
       socket.emit('join_group', activeGroupId);
 
       const handleNewMessage = (data: { message: any }) => {
+        if (data.message.groupId !== activeGroupId) return;
+        
         const isMentioned = user?.username && data?.message?.content?.includes(`@${user.username}`) && data?.message?.authorId !== user?.id;
         if (isMentioned) {
           setUnreadMentions(prev => {
@@ -228,25 +267,83 @@ export default function GroupsTab() {
   }, [searchParams, joinedGroups, navigate]);
 
   useEffect(() => {
+    if (activeGroupId && messages.length > 0) {
+      const prevScroll = sessionCacheGroups[activeGroupId]?.scrollTop;
+      sessionCacheGroups[activeGroupId] = {
+        messages,
+        hasMoreOlder,
+        hasMoreNewer,
+        nextCursorOlder,
+        nextCursorNewer,
+        scrollTop: prevScroll
+      };
+    }
+  }, [messages, hasMoreOlder, hasMoreNewer, nextCursorOlder, nextCursorNewer, activeGroupId]);
+
+  React.useLayoutEffect(() => {
+    if (activeGroupId) {
+      const targetId = searchParams.get('messageId');
+      if (!targetId) {
+        if (sessionCacheGroups[activeGroupId]) {
+          const session = sessionCacheGroups[activeGroupId];
+          if (session.scrollTop !== undefined && messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = session.scrollTop;
+          }
+        } else if (messageCache[activeGroupId]) {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+          }
+        }
+      }
+    }
+  }, [activeGroupId, searchParams]);
+
+  useEffect(() => {
     if (activeGroupId) {
       isNearBottomRef.current = true;
+      const targetId = searchParams.get('messageId');
 
-      if (messageCache[activeGroupId] && !searchParams.get('messageId')) {
-        setMessages(messageCache[activeGroupId]);
+      if (sessionCacheGroups[activeGroupId] && !targetId) {
+        const session = sessionCacheGroups[activeGroupId];
+        setMessages(session.messages);
+        setHasMoreOlder(session.hasMoreOlder);
+        setHasMoreNewer(session.hasMoreNewer);
+        setNextCursorOlder(session.nextCursorOlder);
+        setNextCursorNewer(session.nextCursorNewer);
         isInitialLoadRef.current = false;
+        if (session.messages.length > 0) {
+          lastMessageIdRef.current = session.messages[session.messages.length - 1].id;
+        } else {
+          lastMessageIdRef.current = null;
+        }
+        
+        fetchMessages(activeGroupId, 'initial', null, undefined, true);
+      } else if (messageCache[activeGroupId] && !targetId) {
+        const cached = messageCache[activeGroupId];
+        setMessages(cached);
+        isInitialLoadRef.current = false;
+        if (cached.length > 0) {
+          lastMessageIdRef.current = cached[cached.length - 1].id;
+        } else {
+          lastMessageIdRef.current = null;
+        }
+        
+        setHasMoreOlder(true);
+        setHasMoreNewer(false);
+        setNextCursorOlder(null);
+        setNextCursorNewer(null);
+        fetchMessages(activeGroupId, 'initial', null, undefined, true);
       } else {
         setMessages([]);
         isInitialLoadRef.current = true;
+        lastMessageIdRef.current = null;
+        setHasMoreOlder(true);
+        setHasMoreNewer(false);
+        setNextCursorOlder(null);
+        setNextCursorNewer(null);
+        fetchMessages(activeGroupId, 'initial', null, targetId || undefined);
       }
-      setHasMoreOlder(true);
-      setHasMoreNewer(false);
-      setNextCursorOlder(null);
-      setNextCursorNewer(null);
       setUnreadMentions([]);
-      
-      const targetId = searchParams.get('messageId');
-      
-      fetchMessages(activeGroupId, 'initial', null, targetId || undefined);
       fetchGroupMembers(activeGroupId);
     }
   }, [activeGroupId, searchParams.get('messageId')]);
@@ -292,15 +389,26 @@ export default function GroupsTab() {
         setActiveGroupMembers(data.members);
       }
     } catch (error) {
-      console.error('Failed to fetch group members', error);
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        // Dev server is likely restarting
+        console.warn('Network error fetching group members (server may be restarting).');
+      } else {
+        console.error('Failed to fetch group members', error);
+      }
     }
   };
 
   const isFetchingHistoryRef = useRef(false);
 
-  const fetchMessages = async (groupId: string, direction: 'initial' | 'older' | 'newer' = 'initial', cursor: string | null = null, targetMessageId?: string) => {
-    if (isLoadingMessages) return;
-    setIsLoadingMessages(true);
+  const fetchMessages = async (groupId: string, direction: 'initial' | 'older' | 'newer' = 'initial', cursor: string | null = null, targetMessageId?: string, preventAutoScroll = false) => {
+    const fetchKey = `${groupId}-${direction}-${cursor || ''}-${targetMessageId || ''}`;
+    if (isFetchingRef.current[fetchKey]) return;
+    isFetchingRef.current[fetchKey] = true;
+    
+    if (activeGroupIdRef.current === groupId) {
+      setIsLoadingMessages(true);
+    }
+    
     if (direction === 'older' || direction === 'newer') {
         isFetchingHistoryRef.current = true;
     }
@@ -322,6 +430,9 @@ export default function GroupsTab() {
       if (res.ok) {
         const data = await res.json();
         
+        // Prevent race condition where response from an older group overwrites current view
+        if (activeGroupIdRef.current !== groupId) return;
+
         if (direction === 'older' && messagesContainerRef.current) {
           prevScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
         }
@@ -331,7 +442,20 @@ export default function GroupsTab() {
           const incomingMessages = data.messages || [];
           
           if (direction === 'initial') {
-            newMessages = incomingMessages;
+            if (prev.length > 0 && !searchParams.get('messageId')) {
+               const existingIds = new Set(prev.map(m => m.id));
+               const hasOverlap = incomingMessages.some((m: any) => existingIds.has(m.id));
+               
+               if (hasOverlap) {
+                 const prevMap = new Map(prev.map(m => [m.id, m]));
+                 incomingMessages.forEach((m: any) => prevMap.set(m.id, m));
+                 newMessages = Array.from(prevMap.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+               } else {
+                 newMessages = incomingMessages;
+               }
+            } else {
+               newMessages = incomingMessages;
+            }
           } else if (direction === 'older') {
             // Filter duplicates
             const existingIds = new Set(prev.map(m => m.id));
@@ -387,7 +511,7 @@ export default function GroupsTab() {
                     isAutoScrollingRef.current = false;
                 }, 500);
               }
-            } else {
+            } else if (!preventAutoScroll) {
               isAutoScrollingRef.current = true;
               messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
               setTimeout(() => {
@@ -402,9 +526,16 @@ export default function GroupsTab() {
         }
       }
     } catch (error) {
-      console.error('Failed to fetch messages', error);
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.warn('Network error fetching messages (server may be restarting).');
+      } else {
+        console.error('Failed to fetch messages', error);
+      }
     } finally {
-      setIsLoadingMessages(false);
+      delete isFetchingRef.current[fetchKey];
+      if (activeGroupIdRef.current === groupId) {
+        setIsLoadingMessages(false);
+      }
       setTimeout(() => {
           isFetchingHistoryRef.current = false;
       }, 100);
@@ -500,14 +631,66 @@ export default function GroupsTab() {
   };
 
   useEffect(() => {
-    const displayed = joinedGroups.filter(g => !g.isDirectMessage);
-    if (displayed.length > 0 && !displayed.some(g => g.id === activeGroupId)) {
+    const displayed = joinedGroups.filter((g: any) => !g.isDirectMessage);
+    const groupIdFromUrl = searchParams.get('id');
+    
+    // If the URL specifies a group ID, always respect it (it might be loading)
+    if (groupIdFromUrl) {
+      if (activeGroupId !== groupIdFromUrl) {
+        setActiveGroupId(groupIdFromUrl);
+      }
+      return;
+    }
+
+    if (displayed.length > 0 && !displayed.some((g: any) => g.id === activeGroupId)) {
       setActiveGroupId(displayed[0].id);
     }
-  }, [joinedGroups]);
+  }, [joinedGroups, activeGroupId, searchParams]);
 
   const displayedGroups = joinedGroups.filter(g => !g.isDirectMessage);
   const activeGroup = joinedGroups.find(g => g.id === activeGroupId) || displayedGroups[0] || null;
+
+  const handleGroupClick = (groupId: string) => {
+    if (activeGroupId === groupId) return;
+    
+    // Save scroll of current group
+    if (activeGroupId && sessionCacheGroups[activeGroupId] && messagesContainerRef.current) {
+      sessionCacheGroups[activeGroupId].scrollTop = messagesContainerRef.current.scrollTop;
+    }
+    
+    React.startTransition(() => {
+      // Fast switch state
+      if (sessionCacheGroups[groupId]) {
+        const session = sessionCacheGroups[groupId];
+        setMessages(session.messages);
+        setHasMoreOlder(session.hasMoreOlder);
+        setHasMoreNewer(session.hasMoreNewer);
+        setNextCursorOlder(session.nextCursorOlder);
+        setNextCursorNewer(session.nextCursorNewer);
+        isInitialLoadRef.current = false;
+        lastMessageIdRef.current = session.messages.length > 0 ? session.messages[session.messages.length - 1].id : null;
+      } else if (messageCache[groupId]) {
+        const cached = messageCache[groupId];
+        setMessages(cached);
+        isInitialLoadRef.current = false;
+        lastMessageIdRef.current = cached.length > 0 ? cached[cached.length - 1].id : null;
+        setHasMoreOlder(true);
+        setHasMoreNewer(false);
+        setNextCursorOlder(null);
+        setNextCursorNewer(null);
+      } else {
+        setMessages([]);
+        isInitialLoadRef.current = true;
+        lastMessageIdRef.current = null;
+        setHasMoreOlder(true);
+        setHasMoreNewer(false);
+        setNextCursorOlder(null);
+        setNextCursorNewer(null);
+      }
+      setActiveGroupId(groupId);
+      setSearchParams({ id: groupId });
+    });
+  };
 
   const getGroupInitials = (name: string) => {
     if (!name) return '';
@@ -565,7 +748,7 @@ export default function GroupsTab() {
     }
   };
 
-  const scrollToBottom = () => {
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
     isAutoScrollingRef.current = true;
     if (searchParams.has('messageId')) {
       // The useEffect will handle the fetch when the query param clears
@@ -574,7 +757,7 @@ export default function GroupsTab() {
       if (hasMoreNewer) {
         fetchMessages(activeGroupId, 'initial');
       } else {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior });
         setTimeout(() => {
             isAutoScrollingRef.current = false;
         }, 500);
@@ -621,7 +804,7 @@ export default function GroupsTab() {
       isNearBottomRef.current = true;
       isAutoScrollingRef.current = true;
       setTimeout(() => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
         // Emergency unlock in case the scroll gets interrupted and never naturally reaches the absolute bottom
         setTimeout(() => {
             isAutoScrollingRef.current = false;
@@ -694,7 +877,7 @@ export default function GroupsTab() {
     if (!activeGroupId) return;
 
     if (editingMessage) {
-       const contentToSend = message;
+       const contentToSend = message.trim();
        const messageId = editingMessage.id;
        setEditingMessage(null);
        setMessage('');
@@ -717,17 +900,17 @@ export default function GroupsTab() {
          } else {
            const err = await res.json();
            console.error('Failed to edit message:', err);
-           alert(err.error || 'Failed to edit message');
+           toast(err.error || 'Failed to edit message');
          }
        } catch (err) {
          console.error(err);
-         alert('Failed to edit message');
+         toast('Failed to edit message');
        }
        return;
     }
     
     const tempId = 'temp-' + Date.now();
-    const contentToSend = message;
+    const contentToSend = message.trim();
     const replyToIdToSend = replyingTo?.id;
     const attachmentToSend = attachment;
 
@@ -758,12 +941,17 @@ export default function GroupsTab() {
       fetchMessages(activeGroupId, 'initial');
     } else {
       setMessages(prev => [...prev, tempMessage]);
+      setTimeout(() => scrollToBottom('auto'), 50);
     }
     
     setMessage('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setReplyingTo(null);
     setAttachment(null);
+    setShowPollModal(false);
+
+    // Simulated network delay for UX
+    await new Promise(r => setTimeout(r, 800));
     
     try {
       const token = localStorage.getItem('token');
@@ -798,6 +986,52 @@ export default function GroupsTab() {
     }
   };
 
+  const handleSendPoll = async (pollData: any) => {
+    if (!activeGroupId) return;
+    
+    const tempId = 'temp-' + Date.now();
+    
+    const tempMessage = {
+      id: tempId,
+      sender: user?.name || 'You',
+      authorId: user?.id,
+      text: '',
+      content: '',
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      createdAt: new Date().toISOString(),
+      isMe: true,
+      isPending: true,
+      pollData: JSON.stringify(pollData)
+    };
+
+    setMessages(prev => [...prev, tempMessage]);
+    setTimeout(() => scrollToBottom('auto'), 100);
+
+    // Simulated network delay for UX
+    await new Promise(r => setTimeout(r, 800));
+
+    const token = localStorage.getItem('token');
+    try {
+      const res = await fetch(`/api/groups/${activeGroupId}/messages`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ content: '', pollData: JSON.stringify(pollData) })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMessages(prev => prev.map(m => m.id === tempId ? data.message : m));
+      } else {
+        setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isFailed: true, isPending: false } : m));
+      }
+    } catch(err) {
+      console.error('Failed to send poll:', err);
+      setMessages(prev => prev.map(m => m.id === tempId ? { ...m, isPending: false, isFailed: true } : m));
+    }
+  };
+
   const handleDeleteForMe = async (id: string) => {
     try {
       const token = localStorage.getItem('token');
@@ -811,6 +1045,26 @@ export default function GroupsTab() {
       }
     } catch (error) {
       console.error('Failed to delete message for me', error);
+    }
+  };
+
+  const handleVote = async (messageId: string, optionIds: string[]) => {
+    try {
+      const token = localStorage.getItem('token');
+      const res = await fetch(`/api/groups/${activeGroupId}/messages/${messageId}/vote`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ optionIds })
+      });
+      if (res.ok) {
+        const updatedMessage = await res.json();
+        setMessages(prev => prev.map(m => m.id === messageId ? updatedMessage : m));
+      }
+    } catch(err) {
+      console.error('Failed to vote:', err);
     }
   };
 
@@ -843,11 +1097,11 @@ export default function GroupsTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || 'Failed to pin message');
+        toast(err.error || 'Failed to pin message');
       }
     } catch (error) {
       console.error(error);
-      alert('Failed to pin message');
+      toast('Failed to pin message');
     }
   };
 
@@ -910,6 +1164,250 @@ export default function GroupsTab() {
     return matchesSearch && matchesCategory;
   });
 
+  const renderedMessages = useMemo(() => {
+    return displayedMessages.filter((m: any) => !m.deletedForMe).map((msg: any, index: number, arr: any[]) => {
+                const prevMsg = index > 0 ? arr[index - 1] : null;
+                const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
+
+                const isDeleted = msg.deletedForAll;
+                const repliedMsg = msg.replyToId ? displayedMessages.find((m: any) => m.id === msg.replyToId) : null;
+                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || (msg.author && msg.author.id === user?.id) || (msg.author && msg.author.username === user?.username) || (msg.author && msg.author.name === 'Me'));
+                
+                const prevIsMe = prevMsg ? (prevMsg.isMe !== undefined ? prevMsg.isMe : (prevMsg.authorId === user?.id || prevMsg.author?.id === user?.id || prevMsg.author?.username === user?.username || prevMsg.author?.name === 'Me')) : false;
+                const nextIsMe = nextMsg ? (nextMsg.isMe !== undefined ? nextMsg.isMe : (nextMsg.authorId === user?.id || nextMsg.author?.id === user?.id || nextMsg.author?.username === user?.username || nextMsg.author?.name === 'Me')) : false;
+
+                const getTimeString = (m: any) => new Date(m.createdAt || m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const msgTimeString = getTimeString(msg);
+                const prevTimeString = prevMsg ? getTimeString(prevMsg) : null;
+                const nextTimeString = nextMsg ? getTimeString(nextMsg) : null;
+
+                // Date separator logic
+                const currentDate = new Date(msg.createdAt || msg.time).toLocaleDateString();
+                const prevDate = prevMsg ? new Date(prevMsg.createdAt || prevMsg.time).toLocaleDateString() : null;
+                const showDateSeparator = currentDate !== prevDate;
+
+                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute) AND on the same date
+                const isSameSenderAsPrev = !showDateSeparator && prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
+                const isSameSenderAsNext = nextMsg && ((isMe && nextIsMe) || (!isMe && !nextIsMe && (msg.authorId === nextMsg.authorId || msg.sender === nextMsg.sender))) && (msgTimeString === nextTimeString);
+
+                const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
+
+                return (
+                  <React.Fragment key={msg.id}>
+                    {showDateSeparator && (
+                      <div className="flex justify-center my-6">
+                        <div className="bg-neutral-800/80 backdrop-blur-md border border-neutral-700/50 text-neutral-300 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
+                          {new Date(msg.createdAt || msg.time).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <motion.div 
+                      id={`msg-container-${msg.id}`}
+                      initial={isInitialLoadRef.current || isFetchingHistoryRef.current ? false : { opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.15 }}
+                      className={clsx(
+                        "flex flex-col group/message w-full", 
+                        isMe ? "items-end" : "items-start",
+                        isSameSenderAsPrev ? "mt-0.5" : "mt-3"
+                      )}
+                    >
+                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
+                      {!isMe && (
+                        <div className="w-8 flex-shrink-0">
+                          {!isSameSenderAsNext && (
+                            <ProfilePopover
+                              username={msg.author?.username || senderName.toLowerCase().replace(/\s+/g, '')}
+                              user={{
+                                name: senderName,
+                                handle: msg.author?.username || senderName.toLowerCase().replace(/\s+/g, ''),
+                                bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
+                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
+                              }}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
+                                <img 
+                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
+                                  alt={senderName} 
+                                  className="w-full h-full object-cover" 
+                                  referrerPolicy="no-referrer" 
+                                />
+                              </div>
+                            </ProfilePopover>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="flex flex-col gap-1 relative">
+                        {/* Options Menu */}
+                        <div className={clsx(
+                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
+                          isMe ? "right-full mr-2" : "left-full ml-2"
+                        )}>
+                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
+                            <button 
+                              onClick={() => setReplyingTo(msg)}
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
+                              title="Reply"
+                            >
+                              <Reply className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setActiveMessageOptions(activeMessageOptions?.id === msg.id ? null : {
+                                  id: msg.id,
+                                  rect,
+                                  isMe,
+                                  isDeleted,
+                                  msg
+                                });
+                              }}
+                              title="More Options"
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const contentStr = msg.content || msg.text || '';
+                          const urls = contentStr.match(/https?:\/\/[^\s)\]'"]+/g) || [];
+                          const textWithoutUrls = contentStr.replace(/https?:\/\/[^\s)\]'"]+/g, '').trim();
+                          const isOnlyUrls = urls.length > 0 && textWithoutUrls.length === 0 && !msg.attachmentUrl && !isDeleted;
+                          return (
+                            <>
+                        <div id={`msg-${msg.id}`} className={clsx(
+                          "text-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
+                          isOnlyUrls ? "" : "px-3 py-2 shadow-sm",
+                          isOnlyUrls ? "" : (isMe 
+                            ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
+                            : "bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 text-neutral-200 shadow-[0_2px_10px_rgba(0,0,0,0.2)]"),
+                          isOnlyUrls ? "" : (isMe
+                            ? clsx(
+                                "rounded-l-2xl",
+                                isSameSenderAsPrev ? "rounded-tr-md" : "rounded-tr-2xl",
+                                isSameSenderAsNext ? "rounded-br-md" : "rounded-br-2xl"
+                              )
+                            : clsx(
+                                "rounded-r-2xl",
+                                isSameSenderAsPrev ? "rounded-tl-md" : "rounded-tl-2xl",
+                                isSameSenderAsNext ? "rounded-bl-md" : "rounded-bl-2xl"
+                              )),
+                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800 shadow-none px-3 py-2"
+                        )}>
+                          {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
+                          
+                          {repliedMsg && !isDeleted && (
+                            <div 
+                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
+                              onClick={() => {
+                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
+                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
+                                 if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+                                    if (container) container.classList.add('z-50', 'relative');
+                                    setTimeout(() => {
+                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+                                       if (container) container.classList.remove('z-50', 'relative');
+                                    }, 1500);
+                                 }
+                              }}
+                            >
+                              <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
+                              <div className="truncate opacity-80">{repliedMsg.content}</div>
+                            </div>
+                          )}
+
+                          {msg.attachmentUrl && !isDeleted && (
+                            <div className={clsx("mb-1 rounded-xl overflow-hidden", msg.attachmentType?.startsWith('image/') ? "bg-black/20" : "bg-black/10")}>
+                              {msg.attachmentType?.startsWith('image/') ? (
+                                <img referrerPolicy="no-referrer" src={msg.attachmentUrl} alt="attachment" className="max-w-full max-h-64 object-cover" />
+                              ) : (
+                                <a 
+                                  href={`/api/download?url=${encodeURIComponent(msg.attachmentUrl)}&filename=${encodeURIComponent(msg.attachmentName || 'file')}`}
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  download={msg.attachmentName}
+                                  className="flex items-center gap-3 p-3 hover:bg-black/20 transition-colors"
+                                >
+                                  <div className={clsx("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", isMe ? "bg-white/20" : "bg-primary-500/20")}>
+                                    <FileText className={clsx("w-5 h-5", isMe ? "text-white" : "text-primary-300")} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm truncate">{msg.attachmentName}</div>
+                                    <div className="text-[11px] opacity-70 mt-0.5 uppercase">
+                                      {msg.attachmentSize ? (msg.attachmentSize / 1024).toFixed(1) + ' KB' : 'FILE'} • {msg.attachmentName?.split('.').pop() || 'UNKNOWN'}
+                                    </div>
+                                  </div>
+                                </a>
+                              )}
+                            </div>
+                          )}
+
+                          {!isDeleted && msg.pollData && (
+                            <MessagePoll message={msg} onVote={(optionIds: string[]) => handleVote(msg.id, optionIds)} />
+                          )}
+
+                          {isOnlyUrls && !msg.pollData && (
+                            <div className="flex flex-col gap-2 mb-1 w-full relative min-w-0">
+                               {Array.from(new Set(urls)).map((url: string) => (
+                                  <LinkPreview key={url} url={url} />
+                               ))}
+                            </div>
+                          )}
+
+                          <div className={clsx("flex items-end gap-3", (!(isOnlyUrls && !msg.pollData) && (msg.content?.trim() || msg.text?.trim() || msg.pollData)) ? "justify-between mt-1" : "justify-end")}>
+                            {!(isOnlyUrls && !msg.pollData) && (msg.content?.trim() || msg.text?.trim()) ? (
+                              <div className="flex-1 min-w-0">
+                                <FormattedText text={msg.content || msg.text} hidePreviews={true} />
+                              </div>
+                            ) : null}
+                            <div className={clsx(
+                              "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
+                              !(!(isOnlyUrls && !msg.pollData) && (msg.content?.trim() || msg.text?.trim() || msg.pollData)) && "ml-auto",
+                              (isOnlyUrls && !msg.pollData) ? "text-neutral-500" : (isMe ? "text-primary-200" : "text-neutral-500")
+                            )}>
+                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
+                              {msgTimeString}
+                              {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
+                              {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Render Link Previews Outside Bubble */}
+                        {!isOnlyUrls && (() => {
+                          const uniqueUrls = Array.from(new Set(urls));
+                          if (uniqueUrls.length === 0 || msg.deletedForAll || msg.deletedForMe) return null;
+                          return (
+                            <div className={clsx("flex flex-col gap-2 mt-1 w-full", isMe ? "items-end" : "items-start")}>
+                              {uniqueUrls.map((url: string) => (
+                                <LinkPreview key={url} url={url} />
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        </>
+                        )})()}
+
+                      </div>
+                    </div>
+                  </motion.div>
+                  </React.Fragment>
+                );
+              });
+  }, [
+    displayedMessages,
+    user?.id,
+    user?.username,
+    activeMessageOptions?.id,
+    replyingTo?.id // Re-render when replies or options change
+  ]);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -948,7 +1446,7 @@ export default function GroupsTab() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
               key={group.id}
-              onClick={() => setActiveGroupId(group.id)}
+              onClick={() => handleGroupClick(group.id)}
               className={clsx(
                 "w-full text-left p-4 border-b border-neutral-800/50 hover:bg-neutral-800 transition-colors flex items-center justify-between",
                 group.id === activeGroupId && "bg-neutral-800/80 border-l-2 border-l-primary-500"
@@ -1077,7 +1575,7 @@ export default function GroupsTab() {
               className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-repeat"
               style={{ backgroundBlendMode: 'overlay', backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
             >
-              {isLoadingMessages && hasMoreOlder && messages.length > 0 && (
+              {displayedLoading && displayedHasMoreOlder && displayedMessages.length > 0 && (
                 <div className="text-center py-4">
                   <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
@@ -1088,7 +1586,7 @@ export default function GroupsTab() {
                 </div>
               </div>
               
-              {messages.length === 0 && isLoadingMessages && (
+              {displayedMessages.length === 0 && displayedLoading && (
                 <div className="flex flex-col gap-6 py-4">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className={clsx("flex gap-3", i % 2 === 0 ? "flex-row" : "flex-row-reverse")}>
@@ -1105,203 +1603,8 @@ export default function GroupsTab() {
                 </div>
               )}
 
-              {messages.filter(m => !m.deletedForMe).map((msg, index, arr) => {
-                const prevMsg = index > 0 ? arr[index - 1] : null;
-                const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
-
-                const isDeleted = msg.deletedForAll;
-                const repliedMsg = msg.replyToId ? messages.find(m => m.id === msg.replyToId) : null;
-                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || (msg.author && msg.author.id === user?.id) || (msg.author && msg.author.username === user?.username) || (msg.author && msg.author.name === 'Me'));
-                
-                const prevIsMe = prevMsg ? (prevMsg.isMe !== undefined ? prevMsg.isMe : (prevMsg.authorId === user?.id || prevMsg.author?.id === user?.id || prevMsg.author?.username === user?.username || prevMsg.author?.name === 'Me')) : false;
-                const nextIsMe = nextMsg ? (nextMsg.isMe !== undefined ? nextMsg.isMe : (nextMsg.authorId === user?.id || nextMsg.author?.id === user?.id || nextMsg.author?.username === user?.username || nextMsg.author?.name === 'Me')) : false;
-
-                const getTimeString = (m: any) => new Date(m.createdAt || m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const msgTimeString = getTimeString(msg);
-                const prevTimeString = prevMsg ? getTimeString(prevMsg) : null;
-                const nextTimeString = nextMsg ? getTimeString(nextMsg) : null;
-
-                // Date separator logic
-                const currentDate = new Date(msg.createdAt || msg.time).toLocaleDateString();
-                const prevDate = prevMsg ? new Date(prevMsg.createdAt || prevMsg.time).toLocaleDateString() : null;
-                const showDateSeparator = currentDate !== prevDate;
-
-                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute) AND on the same date
-                const isSameSenderAsPrev = !showDateSeparator && prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
-                const isSameSenderAsNext = nextMsg && ((isMe && nextIsMe) || (!isMe && !nextIsMe && (msg.authorId === nextMsg.authorId || msg.sender === nextMsg.sender))) && (msgTimeString === nextTimeString);
-
-                const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
-
-                return (
-                  <React.Fragment key={msg.id}>
-                    {showDateSeparator && (
-                      <div className="flex justify-center my-6">
-                        <div className="bg-neutral-800/80 backdrop-blur-md border border-neutral-700/50 text-neutral-300 text-[11px] font-medium px-3 py-1 rounded-full shadow-sm">
-                          {new Date(msg.createdAt || msg.time).toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' })}
-                        </div>
-                      </div>
-                    )}
-                    
-                    <motion.div 
-                      id={`msg-container-${msg.id}`}
-                      initial={isInitialLoadRef.current || isFetchingHistoryRef.current ? false : { opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.15 }}
-                      className={clsx(
-                        "flex flex-col group/message w-full", 
-                        isMe ? "items-end" : "items-start",
-                        isSameSenderAsPrev ? "mt-0.5" : "mt-3"
-                      )}
-                    >
-                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
-                      {!isMe && (
-                        <div className="w-8 flex-shrink-0">
-                          {!isSameSenderAsNext && (
-                            <ProfilePopover
-                              username={msg.author?.username || senderName.toLowerCase()}
-                              user={{
-                                name: senderName,
-                                handle: msg.author?.username || senderName.toLowerCase(),
-                                bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
-                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
-                              }}
-                            >
-                              <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
-                                <img 
-                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
-                                  alt={senderName} 
-                                  className="w-full h-full object-cover" 
-                                  referrerPolicy="no-referrer" 
-                                />
-                              </div>
-                            </ProfilePopover>
-                          )}
-                        </div>
-                      )}
-                      
-                      <div className="flex flex-col gap-1 relative">
-                        {/* Options Menu */}
-                        <div className={clsx(
-                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
-                          isMe ? "right-full mr-2" : "left-full ml-2"
-                        )}>
-                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
-                            <button 
-                              onClick={() => setReplyingTo(msg)}
-                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
-                              title="Reply"
-                            >
-                              <Reply className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setActiveMessageOptions(activeMessageOptions?.id === msg.id ? null : {
-                                  id: msg.id,
-                                  rect,
-                                  isMe,
-                                  isDeleted,
-                                  msg
-                                });
-                              }}
-                              title="More Options"
-                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div id={`msg-${msg.id}`} className={clsx(
-                          "px-3 py-2 text-sm shadow-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
-                          isMe 
-                            ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
-                            : "bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 text-neutral-200 shadow-[0_2px_10px_rgba(0,0,0,0.2)]",
-                          isMe
-                            ? clsx(
-                                "rounded-l-2xl",
-                                isSameSenderAsPrev ? "rounded-tr-md" : "rounded-tr-2xl",
-                                isSameSenderAsNext ? "rounded-br-md" : "rounded-br-2xl"
-                              )
-                            : clsx(
-                                "rounded-r-2xl",
-                                isSameSenderAsPrev ? "rounded-tl-md" : "rounded-tl-2xl",
-                                isSameSenderAsNext ? "rounded-bl-md" : "rounded-bl-2xl"
-                              ),
-                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800 shadow-none"
-                        )}>
-                          {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
-                          
-                          {repliedMsg && !isDeleted && (
-                            <div 
-                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
-                              onClick={() => {
-                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
-                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
-                                 if (el) {
-                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
-                                    if (container) container.classList.add('z-50', 'relative');
-                                    setTimeout(() => {
-                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
-                                       if (container) container.classList.remove('z-50', 'relative');
-                                    }, 1500);
-                                 }
-                              }}
-                            >
-                              <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
-                              <div className="truncate opacity-80">{repliedMsg.content}</div>
-                            </div>
-                          )}
-
-                          {msg.attachmentUrl && !isDeleted && (
-                            <div className={clsx("mb-1 rounded-xl overflow-hidden", msg.attachmentType?.startsWith('image/') ? "bg-black/20" : "bg-black/10")}>
-                              {msg.attachmentType?.startsWith('image/') ? (
-                                <img src={msg.attachmentUrl} alt="attachment" className="max-w-full max-h-64 object-cover" />
-                              ) : (
-                                <a 
-                                  href={`/api/download?url=${encodeURIComponent(msg.attachmentUrl)}&filename=${encodeURIComponent(msg.attachmentName || 'file')}`}
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  download={msg.attachmentName}
-                                  className="flex items-center gap-3 p-3 hover:bg-black/20 transition-colors"
-                                >
-                                  <div className={clsx("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", isMe ? "bg-white/20" : "bg-primary-500/20")}>
-                                    <FileText className={clsx("w-5 h-5", isMe ? "text-white" : "text-primary-300")} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm truncate">{msg.attachmentName}</div>
-                                    <div className="text-[11px] opacity-70 mt-0.5 uppercase">
-                                      {msg.attachmentSize ? (msg.attachmentSize / 1024).toFixed(1) + ' KB' : 'FILE'} • {msg.attachmentName?.split('.').pop() || 'UNKNOWN'}
-                                    </div>
-                                  </div>
-                                </a>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-end justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              <FormattedText text={msg.content || msg.text} />
-                            </div>
-                            <div className={clsx(
-                              "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
-                              isMe ? "text-primary-200" : "text-neutral-500"
-                            )}>
-                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
-                              {msgTimeString}
-                              {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
-                              {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                  </React.Fragment>
-                );
-              })}
-              {isLoadingMessages && hasMoreNewer && (
+                            {renderedMessages}
+              {displayedLoading && displayedHasMoreNewer && (
                 <div className="text-center py-4">
                   <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
@@ -1347,7 +1650,7 @@ export default function GroupsTab() {
                     initial={{ opacity: 0, scale: 0.5, x: 20 }}
                     animate={{ opacity: 1, scale: 1, x: 0 }}
                     exit={{ opacity: 0, scale: 0.5, x: 20 }}
-                    onClick={scrollToBottom}
+                    onClick={() => scrollToBottom('smooth')}
                     className="p-3 bg-primary-600 text-white rounded-full shadow-lg hover:bg-primary-700 transition-colors flex items-center justify-center relative"
                   >
                     <ChevronDown className={clsx("w-6 h-6", hasMoreNewer && "animate-bounce")} />
@@ -1395,7 +1698,7 @@ export default function GroupsTab() {
                       <div className="flex items-center gap-3 overflow-hidden">
                         <div className="w-10 h-10 rounded-lg bg-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
                           {attachment.type.startsWith('image/') ? (
-                            <img src={URL.createObjectURL(attachment)} alt="preview" className="w-full h-full object-cover" />
+                            <img referrerPolicy="no-referrer" src={URL.createObjectURL(attachment)} alt="preview" className="w-full h-full object-cover" />
                           ) : (
                             <File className="w-5 h-5 text-neutral-400" />
                           )}
@@ -1494,6 +1797,16 @@ export default function GroupsTab() {
                     className="hidden" 
                     onChange={handleFileChange}
                   />
+                  {(user?.role === 'ADMIN' || activeGroupMembers.find(m => m.id === user?.id)?.role === 'admin') && (
+                    <button
+                      type="button"
+                      onClick={() => setShowPollModal(true)}
+                      className="p-2 mb-0.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 rounded-full transition-colors shrink-0"
+                      title="Create Poll"
+                    >
+                      <BarChart2 className="w-5 h-5" />
+                    </button>
+                  )}
                   <label 
                     htmlFor="file-upload"
                     className="p-2 mb-0.5 text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900 rounded-full transition-colors shrink-0 cursor-pointer"
@@ -1604,15 +1917,27 @@ export default function GroupsTab() {
                 </button>
               </div>
 
-              <div className="p-4 border-b border-neutral-800">
-                <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4">Shared Media</h4>
+              <div className="p-4 border-b border-neutral-800 flex flex-col gap-3">
+                {activeGroup?.courseId && (
+                  <button 
+                    onClick={() => setShowCourseOverview(true)}
+                    className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl flex items-center justify-center gap-2 transition-colors border border-neutral-700 hover:border-neutral-600"
+                  >
+                    <BookOpen className="w-4 h-4 text-primary-400" />
+                    Course Overview
+                  </button>
+                )}
                 <button 
                   onClick={() => navigate('/academics')}
-                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl flex items-center justify-center gap-2 transition-colors mb-4 border border-neutral-700 hover:border-neutral-600"
+                  className="w-full py-2.5 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl flex items-center justify-center gap-2 transition-colors border border-neutral-700 hover:border-neutral-600"
                 >
                   <Folder className="w-4 h-4 text-primary-400" />
                   Go to Group Files
                 </button>
+              </div>
+
+              <div className="p-4 border-b border-neutral-800">
+                <h4 className="text-xs font-bold text-neutral-500 uppercase tracking-wider mb-4">Shared Media</h4>
                 <div className="flex gap-4 flex-wrap">
                   {messages.filter(m => m.attachmentType?.includes('pdf') || m.attachmentType?.includes('document') || m.attachmentType?.includes('text')).length > 0 && (
                     <div className="flex flex-col items-center gap-2 cursor-pointer group">
@@ -1823,7 +2148,7 @@ export default function GroupsTab() {
                 <div className="bg-neutral-950 p-4 rounded-xl mb-6">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block mb-2">Message to report</span>
                   <div className="flex items-center gap-3 mb-2">
-                    <img 
+                    <img referrerPolicy="no-referrer" 
                       src={reportingMessage.author?.avatarUrl || `https://picsum.photos/seed/${reportingMessage.authorId}/50/50`} 
                       className="w-6 h-6 rounded-full object-cover" 
                       alt=""
@@ -1891,7 +2216,7 @@ export default function GroupsTab() {
                       if (res.ok) {
                         setReportingMessage(null);
                         setReportReason('');
-                        alert('Your report has been submitted. Thank you for helping keep our community safe.');
+                        toast('Your report has been submitted. Thank you for helping keep our community safe.');
                       } else {
                         const errorText = await res.text();
                         let errorMessage = 'Failed to submit report. Please try again.';
@@ -1901,11 +2226,11 @@ export default function GroupsTab() {
                         } catch (e) {
                            console.error("Non-JSON error response:", errorText);
                         }
-                        alert(errorMessage);
+                        toast(errorMessage);
                       }
                     } catch (error) {
                       console.error('Report error:', error);
-                      alert('Failed to submit report. Please check your connection.');
+                      toast('Failed to submit report. Please check your connection.');
                     } finally {
                       setIsSubmittingReport(false);
                     }
@@ -2098,6 +2423,20 @@ export default function GroupsTab() {
           </div>
         )}
       </AnimatePresence>
+
+      <CourseDetailsModal 
+        isOpen={showCourseOverview}
+        onClose={() => setShowCourseOverview(false)}
+        courseId={activeGroup?.courseId || ''}
+        onNavigate={() => {}}
+        onEnroll={() => {}}
+      />
+
+      <CreatePollModal 
+        isOpen={showPollModal}
+        onClose={() => setShowPollModal(false)}
+        onSubmit={handleSendPoll}
+      />
     </motion.div>
   );
 }

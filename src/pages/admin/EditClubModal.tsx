@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Plus, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
 import TagInput from '../../components/TagInput';
@@ -57,7 +58,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
         throw new Error('Upload failed');
       }
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message);
     }
   };
 
@@ -188,7 +189,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
                   type="text"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                   required
                 />
               </div>
@@ -207,7 +208,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
               <textarea
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
+                className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
                 required
               />
             </div>
@@ -217,7 +218,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
                 <label className="block text-sm font-medium text-neutral-300 mb-1.5">Avatar Image</label>
                 <div className="flex items-center gap-4">
                   {avatarUrl ? (
-                    <img src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
+                    <img referrerPolicy="no-referrer" src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
                   ) : (
                     <div className="w-12 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
                       <ImageIcon className="w-5 h-5 text-neutral-500" />
@@ -243,7 +244,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
                 <label className="block text-sm font-medium text-neutral-300 mb-1.5">Banner Image</label>
                 <div className="flex items-center gap-4">
                   {bannerUrl ? (
-                    <img src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
+                    <img referrerPolicy="no-referrer" src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
                   ) : (
                     <div className="w-20 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
                       <ImageIcon className="w-5 h-5 text-neutral-500" />
@@ -272,7 +273,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
               <select
                 value={adminId}
                 onChange={(e) => setAdminId(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
               >
                 <option value="">Select an admin...</option>
                 {users.map(user => (
@@ -301,7 +302,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
                       type="url"
                       value={link}
                       onChange={(e) => handleUpdateLink(index, e.target.value)}
-                      className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-primary-500"
+                      className="flex-1 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2 text-white focus:outline-none focus:border-primary-500"
                       placeholder="https://..."
                       required
                     />
@@ -324,7 +325,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
               <label className="block text-sm font-medium text-neutral-300 mb-3">Club News Articles</label>
               <div className="space-y-3">
                 {articles.map((article) => (
-                  <div key={article.id} className="flex items-center justify-between bg-neutral-950 border border-neutral-800 rounded-xl p-3">
+                  <div key={article.id} className="flex items-center justify-between bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-3">
                     <div>
                       <p className="text-white font-medium text-sm">{article.title}</p>
                       <p className="text-xs text-neutral-500">{new Date(article.createdAt).toLocaleDateString()}</p>
@@ -339,7 +340,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
                   </div>
                 ))}
                 {articles.length === 0 && (
-                  <p className="text-sm text-neutral-500 text-center py-4 bg-neutral-950 border border-neutral-800 rounded-xl">No articles posted by this club.</p>
+                  <p className="text-sm text-neutral-500 text-center py-4 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm">No articles posted by this club.</p>
                 )}
               </div>
             </div>

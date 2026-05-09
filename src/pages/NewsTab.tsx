@@ -5,6 +5,7 @@ import { clsx } from 'clsx';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
 import NewsArticleModal from '../components/NewsArticleModal';
 import OptimizedImage from '../components/OptimizedImage';
+import { stripHtmlAndMarkdown } from '../utils/textHelpers';
 
 const NEWS_ITEMS = [
   {
@@ -76,6 +77,7 @@ export default function NewsTab() {
   const [activeCategory, setActiveCategory] = useState("All");
   const [articles, setArticles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [tagsLoading, setTagsLoading] = useState(true);
   const [dynamicTags, setDynamicTags] = useState<string[]>([]);
   const [selectedArticle, setSelectedArticle] = useState<any | null>(null);
   const dragScroll = useDraggableScroll<HTMLDivElement>();
@@ -88,12 +90,23 @@ export default function NewsTab() {
           setDynamicTags(["All", ...data.tags.map((t: any) => t.name)]);
         }
       })
-      .catch(console.error);
+      .catch(console.error)
+      .finally(() => setTagsLoading(false));
 
-    fetch('/api/news')
+    const headers: any = {};
+    const token = localStorage.getItem('token');
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch('/api/news', { headers })
       .then(res => res.json())
       .then(data => {
         // Map database articles to match the required properties for the frontend
+        if (!data.articles) {
+          setArticles([]);
+          setLoading(false);
+          return;
+        }
+        
         const mapped = data.articles.map((a: any) => {
           let parsedImages: string[] = [];
           if (a.images) {
@@ -111,7 +124,7 @@ export default function NewsTab() {
             readTime: '5 min read',
             image: a.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null) || 'https://picsum.photos/seed/news/800/600',
             images: parsedImages,
-            excerpt: a.content.substring(0, 150) + '...',
+            excerpt: a.content,
             author: a.club ? { id: a.clubId, isClub: true, name: a.club.name, avatar: a.club.avatarUrl } : a.author || 'University Press',
             authorAvatar: a.club?.avatarUrl || a.author?.avatarUrl
           };
@@ -178,12 +191,18 @@ export default function NewsTab() {
         </div>
 
         {/* Category Filter */}
-        <div className="bg-neutral-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl mb-6 inline-flex max-w-full">
+        <div className="bg-neutral-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl mb-6 inline-flex max-w-full overflow-hidden">
           <div 
             {...dragScroll}
-            className="flex gap-1 overflow-x-auto scrollbar-hide select-none"
+            className="flex gap-1 overflow-x-auto scrollbar-hide select-none w-full"
           >
-            {(dynamicTags.length > 1 ? dynamicTags : CATEGORIES).map((category) => (
+            {tagsLoading ? (
+              <div className="flex gap-2 p-2 px-4">
+                <div className="w-16 h-6 bg-neutral-800 animate-pulse rounded-md"></div>
+                <div className="w-24 h-6 bg-neutral-800 animate-pulse rounded-md"></div>
+                <div className="w-20 h-6 bg-neutral-800 animate-pulse rounded-md"></div>
+              </div>
+            ) : (dynamicTags.length > 1 ? dynamicTags : CATEGORIES).map((category) => (
               <button
                 key={category}
                 onClick={() => setActiveCategory(category)}
@@ -197,8 +216,8 @@ export default function NewsTab() {
                 {activeCategory === category && (
                   <motion.div
                     layoutId="news-category"
-                    className="absolute inset-0 bg-primary-500 rounded-xl shadow-lg shadow-primary-500/25"
-                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    className="absolute inset-0 bg-primary-500 rounded-xl"
+                    transition={{ type: "spring", bounce: 0, duration: 0.3 }}
                   />
                 )}
                 <span className="relative z-10">{category}</span>
@@ -207,102 +226,123 @@ export default function NewsTab() {
           </div>
         </div>
 
-        {/* Featured Post */}
-        {featuredPost && (
-          <motion.div 
-            initial={{ y: 20, opacity: 0 }}
-            animate={{ y: 0, opacity: 1 }}
-            transition={{ duration: 0.5 }}
-            className="mb-10 group cursor-pointer"
-            onClick={() => handleArticleOpen(featuredPost)}
-          >
-            <div className="relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 aspect-[2/1] md:aspect-[2.5/1]">
-              <OptimizedImage 
-                src={featuredPost.image} 
-                alt={featuredPost.title} 
-                variant="banner"
-                className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
-              
-              <div className="absolute bottom-0 left-0 w-full p-6 md:p-10 flex flex-col justify-end">
-                <div className="flex items-center gap-3 mb-4">
-                  <span className="px-3 py-1 rounded-full bg-primary-500 text-white text-xs font-bold tracking-wider uppercase">
-                    {featuredPost.category}
-                  </span>
-                  <div className="flex items-center gap-1.5 text-neutral-300 text-xs font-medium">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {featuredPost.date}
-                  </div>
-                  <div className="flex items-center gap-1.5 text-neutral-300 text-xs font-medium">
-                    <Clock className="w-3.5 h-3.5" />
-                    {featuredPost.readTime}
+        {loading ? (
+          <>
+            <div className="mb-10 w-full relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 animate-pulse aspect-[2/1] md:aspect-[2.5/1]" />
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="bg-neutral-900/40 border border-white/5 rounded-3xl overflow-hidden animate-pulse flex flex-col h-80">
+                  <div className="h-48 bg-neutral-800" />
+                  <div className="p-6 flex flex-col flex-1">
+                    <div className="h-4 bg-neutral-800 rounded w-1/3 mb-3" />
+                    <div className="h-6 bg-neutral-800 rounded w-full mb-2" />
+                    <div className="h-6 bg-neutral-800 rounded w-2/3 mb-4" />
+                    <div className="mt-auto h-4 bg-neutral-800 rounded w-1/4" />
                   </div>
                 </div>
-                
-                <h2 className="text-2xl md:text-4xl font-black text-white leading-tight tracking-tight mb-3 group-hover:text-primary-400 transition-colors">
-                  {featuredPost.title}
-                </h2>
-                <p className="text-neutral-300 text-sm md:text-base max-w-3xl line-clamp-2 md:line-clamp-none">
-                  {featuredPost.excerpt}
-                </p>
-              </div>
+              ))}
             </div>
-          </motion.div>
-        )}
+          </>
+        ) : (
+          <>
+            {/* Featured Post */}
+            {featuredPost && (
+              <motion.div 
+                initial={{ y: 20, opacity: 0 }}
+                animate={{ y: 0, opacity: 1 }}
+                transition={{ duration: 0.5 }}
+                className="mb-10 group cursor-pointer"
+                onClick={() => handleArticleOpen(featuredPost)}
+              >
+                <div className="relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 aspect-[2/1] md:aspect-[2.5/1]">
+                  <OptimizedImage 
+                    src={featuredPost.image} 
+                    alt={featuredPost.title} 
+                    variant="banner"
+                    className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
+                  
+                  <div className="absolute bottom-0 left-0 w-full p-6 md:p-10 flex flex-col justify-end">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className="px-3 py-1 rounded-full bg-primary-500 text-white text-xs font-bold tracking-wider uppercase">
+                        {featuredPost.category}
+                      </span>
+                      <div className="flex items-center gap-1.5 text-neutral-300 text-xs font-medium">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {featuredPost.date}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-neutral-300 text-xs font-medium">
+                        <Clock className="w-3.5 h-3.5" />
+                        {featuredPost.readTime}
+                      </div>
+                    </div>
+                    
+                    <h2 className="text-2xl md:text-4xl font-black text-white leading-tight tracking-tight mb-3 group-hover:text-primary-400 transition-colors">
+                      {featuredPost.title}
+                    </h2>
+                    <p className="text-neutral-300 text-sm md:text-base max-w-3xl whitespace-pre-wrap line-clamp-2 md:line-clamp-4">
+                      {stripHtmlAndMarkdown(featuredPost.content ? featuredPost.content : featuredPost.excerpt)}
+                    </p>
+                  </div>
+                </div>
+              </motion.div>
+            )}
 
-        {/* Regular Posts Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
-          {regularPosts.map((post, index) => (
-            <motion.div 
-              initial={{ y: 20, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              transition={{ delay: index * 0.1 + 0.2 }}
-              key={post.id}
-              onClick={() => handleArticleOpen(post)}
-              className="group cursor-pointer bg-neutral-900/40 backdrop-blur-md border border-white/5 hover:border-primary-500/30 rounded-3xl overflow-hidden transition-all duration-300 flex flex-col"
-            >
-              <div className="relative h-48 overflow-hidden">
-                <OptimizedImage 
-                  src={post.image} 
-                  alt={post.title} 
-                  variant="medium"
-                  className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
-                />
-                <div className="absolute top-4 left-4">
-                  <span className="px-3 py-1 rounded-full bg-neutral-950/80 backdrop-blur-md text-primary-400 border border-white/10 text-xs font-bold tracking-wider uppercase">
-                    {post.category}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="p-6 flex flex-col flex-1">
-                <div className="flex items-center gap-4 text-neutral-500 text-xs font-medium mb-3">
-                  <div className="flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5" />
-                    {post.date}
+            {/* Regular Posts Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
+              {regularPosts.map((post, index) => (
+                <motion.div 
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  transition={{ delay: index * 0.1 + 0.2 }}
+                  key={post.id}
+                  onClick={() => handleArticleOpen(post)}
+                  className="group cursor-pointer bg-neutral-900/40 backdrop-blur-md border border-white/5 hover:border-primary-500/30 rounded-3xl overflow-hidden transition-all duration-300 flex flex-col"
+                >
+                  <div className="relative h-48 overflow-hidden">
+                    <OptimizedImage 
+                      src={post.image} 
+                      alt={post.title} 
+                      variant="medium"
+                      className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-500"
+                    />
+                    <div className="absolute top-4 left-4">
+                      <span className="px-3 py-1 rounded-full bg-neutral-950/80 backdrop-blur-md text-primary-400 border border-white/10 text-xs font-bold tracking-wider uppercase">
+                        {post.category}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5" />
-                    {post.readTime}
+                  
+                  <div className="p-6 flex flex-col flex-1">
+                    <div className="flex items-center gap-4 text-neutral-500 text-xs font-medium mb-3">
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="w-3.5 h-3.5" />
+                        {post.date}
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5" />
+                        {post.readTime}
+                      </div>
+                    </div>
+                    
+                    <h3 className="text-lg font-bold text-white leading-snug mb-2 group-hover:text-primary-400 transition-colors">
+                      {post.title}
+                    </h3>
+                    
+                    <p className="text-neutral-400 text-sm whitespace-pre-wrap line-clamp-3 mb-6 flex-1">
+                      {stripHtmlAndMarkdown(post.content ? post.content : post.excerpt)}
+                    </p>
+                    
+                    <div className="mt-auto flex items-center text-primary-500 text-sm font-bold group-hover:gap-2 transition-all">
+                      Read Article <ArrowRight className="w-4 h-4 ml-1" />
+                    </div>
                   </div>
-                </div>
-                
-                <h3 className="text-lg font-bold text-white leading-snug mb-2 group-hover:text-primary-400 transition-colors">
-                  {post.title}
-                </h3>
-                
-                <p className="text-neutral-400 text-sm line-clamp-3 mb-6 flex-1">
-                  {post.excerpt}
-                </p>
-                
-                <div className="mt-auto flex items-center text-primary-500 text-sm font-bold group-hover:gap-2 transition-all">
-                  Read Article <ArrowRight className="w-4 h-4 ml-1" />
-                </div>
-              </div>
-            </motion.div>
-          ))}
-        </div>
+                </motion.div>
+              ))}
+            </div>
+          </>
+        )}
 
         <NewsArticleModal 
           article={selectedArticle} 

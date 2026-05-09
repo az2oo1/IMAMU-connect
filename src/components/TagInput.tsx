@@ -48,7 +48,11 @@ export default function TagInput({ tags, onChange, placeholder = "Add a tag..." 
           {tag}
           <button
             type="button"
-            onClick={() => removeTag(index)}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              removeTag(index);
+            }}
             className="hover:text-primary-300 focus:outline-none"
           >
             <X className="w-3 h-3" />

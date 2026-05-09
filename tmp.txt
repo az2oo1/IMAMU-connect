@@ -1,0 +1,271 @@
+1124:              {displayedMessages.filter((m: any) => !m.deletedForMe).map((msg: any, index: number, arr: any[]) => {
+1125-                const prevMsg = index > 0 ? arr[index - 1] : null;
+1126-                const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
+1127-
+1128-                const isDeleted = msg.deletedForAll;
+1129-                const repliedMsg = msg.replyToId ? displayedMessages.find((m: any) => m.id === msg.replyToId) : null;
+1130-                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || msg.author?.id === user?.id || msg.author?.username === user?.username || msg.author?.name === 'Me');
+1131-                
+1132-                const prevIsMe = prevMsg ? (prevMsg.isMe !== undefined ? prevMsg.isMe : (prevMsg.authorId === user?.id || prevMsg.author?.id === user?.id || prevMsg.author?.username === user?.username || prevMsg.author?.name === 'Me')) : false;
+1133-                const nextIsMe = nextMsg ? (nextMsg.isMe !== undefined ? nextMsg.isMe : (nextMsg.authorId === user?.id || nextMsg.author?.id === user?.id || nextMsg.author?.username === user?.username || nextMsg.author?.name === 'Me')) : false;
+1134-
+1135-                const getTimeString = (m: any) => new Date(m.createdAt || m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+1136-                const msgTimeString = getTimeString(msg);
+1137-                const prevTimeString = prevMsg ? getTimeString(prevMsg) : null;
+1138-                const nextTimeString = nextMsg ? getTimeString(nextMsg) : null;
+1139-
+1140-                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute)
+1141-                const isSameSenderAsPrev = prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
+1142-                const isSameSenderAsNext = nextMsg && ((isMe && nextIsMe) || (!isMe && !nextIsMe && (msg.authorId === nextMsg.authorId || msg.sender === nextMsg.sender))) && (msgTimeString === nextTimeString);
+1143-
+1144-                const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
+1145-
+1146-                return (
+1147-                  <React.Fragment key={msg.id}>
+1148-                    <motion.div 
+1149-                      id={`msg-container-${msg.id}`}
+1150-                    initial={{ opacity: 0, y: 10 }}
+1151-                    animate={{ opacity: 1, y: 0 }}
+1152-                    transition={{ delay: index * 0.05 }}
+1153-                    key={msg.id} 
+1154-                    className={clsx(
+1155-                      "flex flex-col group/message w-full", 
+1156-                      isMe ? "items-end" : "items-start",
+1157-                      isSameSenderAsPrev ? "mt-0.5" : "mt-3"
+1158-                    )}
+1159-                  >
+1160-                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
+1161-                      {!isMe && (
+1162-                        <div className="w-8 flex-shrink-0">
+1163-                          {!isSameSenderAsNext && (
+1164-                            <ProfilePopover
+1165-                              username={msg.author?.username || senderName.toLowerCase().replace(/\s+/g, '')}
+1166-                              user={{
+1167-                                name: senderName,
+1168-                                handle: msg.author?.username || senderName.toLowerCase().replace(/\s+/g, ''),
+1169-                                bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
+1170-                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
+1171-                              }}
+1172-                            >
+1173-                              <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
+1174-                                <OptimizedImage 
+1175-                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
+1176-                                  alt={senderName} 
+1177-                                  className="w-full h-full object-cover" 
+1178-                                  variant="small"
+1179-                                />
+1180-                              </div>
+1181-                            </ProfilePopover>
+1182-                          )}
+1183-                        </div>
+1184-                      )}
+1185-                      
+1186-                      <div className="flex flex-col gap-1 relative">
+1187-                        {/* Options Menu */}
+1188-                        <div className={clsx(
+1189-                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
+1190-                          isMe ? "right-full mr-2" : "left-full ml-2"
+1191-                        )}>
+1192-                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
+1193-                            <button 
+1194-                              onClick={() => setReplyingTo(msg)}
+1195-                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
+1196-                              title="Reply"
+1197-                            >
+1198-                              <Reply className="w-4 h-4" />
+1199-                            </button>
+1200-                            <button 
+1201-                              onClick={(e) => {
+1202-                                const rect = e.currentTarget.getBoundingClientRect();
+1203-                                setActiveMessageOptions(activeMessageOptions?.id === msg.id ? null : {
+1204-                                  id: msg.id,
+1205-                                  rect,
+1206-                                  isMe,
+1207-                                  isDeleted,
+1208-                                  msg
+1209-                                });
+1210-                              }}
+1211-                              title="More Options"
+1212-                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
+1213-                            >
+1214-                              <MoreVertical className="w-4 h-4" />
+1215-                            </button>
+1216-                          </div>
+1217-                        </div>
+1218-
+1219-                        {(() => {
+1220-                          const contentStr = msg.content || msg.text || '';
+1221-                          const urls = contentStr.match(/https?:\/\/[^\s)\]'"]+/g) || [];
+1222-                          const textWithoutUrls = contentStr.replace(/https?:\/\/[^\s)\]'"]+/g, '').trim();
+1223-                          let isOnlyUrls = urls.length > 0 && textWithoutUrls.length === 0 && !msg.attachmentUrl && !isDeleted;
+1224-                          if (contentStr.startsWith('[REPORT_SUMMARY:')) isOnlyUrls = false;
+1225-                          
+1226-                          return (
+1227-                            <>
+1228-                        <div id={`msg-${msg.id}`} className={clsx(
+1229-                          "text-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
+1230-                          isOnlyUrls ? "" : "px-3 py-2 shadow-sm",
+1231-                          isOnlyUrls ? "" : (isMe 
+1232-                            ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
+1233-                            : "bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 text-neutral-200 shadow-[0_2px_10px_rgba(0,0,0,0.2)]"),
+1234-                          isOnlyUrls ? "" : (isMe
+1235-                            ? clsx(
+1236-                                "rounded-l-2xl",
+1237-                                isSameSenderAsPrev ? "rounded-tr-md" : "rounded-tr-2xl",
+1238-                                isSameSenderAsNext ? "rounded-br-md" : "rounded-br-2xl"
+1239-                              )
+1240-                            : clsx(
+1241-                                "rounded-r-2xl",
+1242-                                isSameSenderAsPrev ? "rounded-tl-md" : "rounded-tl-2xl",
+1243-                                isSameSenderAsNext ? "rounded-bl-md" : "rounded-bl-2xl"
+1244-                              )),
+1245-                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800 shadow-none px-3 py-2"
+1246-                        )}>
+1247-                          {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
+1248-                          
+1249-                          {repliedMsg && !isDeleted && (
+1250-                            <div 
+1251-                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
+1252-                              onClick={() => {
+1253-                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
+1254-                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
+1255-                                 if (el) {
+1256-                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+1257-                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+1258-                                    if (container) container.classList.add('z-50', 'relative');
+1259-                                    setTimeout(() => {
+1260-                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+1261-                                       if (container) container.classList.remove('z-50', 'relative');
+1262-                                    }, 1500);
+1263-                                 }
+1264-                              }}
+1265-                            >
+1266-                              <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
+1267-                              <div className="truncate opacity-80">{repliedMsg.content}</div>
+1268-                            </div>
+1269-                          )}
+1270-
+1271-                          {msg.attachmentUrl && !isDeleted && (
+1272-                            <div className={clsx("mb-1 rounded-xl overflow-hidden", msg.attachmentType?.startsWith('image/') ? "bg-black/20" : "bg-black/10")}>
+1273-                              {msg.attachmentType?.startsWith('image/') ? (
+1274-                                <img referrerPolicy="no-referrer" src={msg.attachmentUrl} alt="attachment" className="max-w-full max-h-64 object-cover" />
+1275-                              ) : (
+1276-                                <a 
+1277-                                  href={`/api/download?url=${encodeURIComponent(msg.attachmentUrl)}&filename=${encodeURIComponent(msg.attachmentName || 'file')}`}
+1278-                                  target="_blank" 
+1279-                                  rel="noopener noreferrer" 
+1280-                                  download={msg.attachmentName}
+1281-                                  className="flex items-center gap-3 p-3 hover:bg-black/20 transition-colors"
+1282-                                >
+1283-                                  <div className={clsx("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", isMe ? "bg-white/20" : "bg-primary-500/20")}>
+1284-                                    <FileText className={clsx("w-5 h-5", isMe ? "text-white" : "text-primary-300")} />
+1285-                                  </div>
+1286-                                  <div className="flex-1 min-w-0">
+1287-                                    <div className="font-medium text-sm truncate">{msg.attachmentName}</div>
+1288-                                    <div className="text-[11px] opacity-70 mt-0.5 uppercase">
+1289-                                      {msg.attachmentSize ? (msg.attachmentSize / 1024).toFixed(1) + ' KB' : 'FILE'} • {msg.attachmentName?.split('.').pop() || 'UNKNOWN'}
+1290-                                    </div>
+1291-                                  </div>
+1292-                                </a>
+1293-                              )}
+1294-                            </div>
+1295-                          )}
+1296-
+1297-                          {isOnlyUrls && (
+1298-                            <div className="flex flex-col gap-2 mb-1 w-full relative min-w-0">
+1299-                               {Array.from(new Set(urls)).map((url: string) => (
+1300-                                  <LinkPreview key={url} url={url} />
+1301-                               ))}
+1302-                            </div>
+1303-                          )}
+1304-
+1305-                          <div className={clsx("flex items-end gap-3", (!isOnlyUrls && (msg.content?.trim() || msg.text?.trim())) ? "justify-between mt-1" : "justify-end")}>
+1306-                            {!isOnlyUrls && (msg.content?.trim() || msg.text?.trim()) ? (
+1307-                              <div className="flex-1 min-w-0">
+1308-                                {msg.content?.startsWith('[REPORT_SUMMARY:') ? (
+1309-                                  <ReportSummary id={msg.content.match(/\[REPORT_SUMMARY:(.+)\]/)?.[1] || ''} />
+1310-                                ) : (
+1311-                                  <FormattedText text={msg.content || msg.text} hidePreviews={true} />
+1312-                                )}
+1313-                              </div>
+1314-                            ) : null}
+1315-                            <div className={clsx(
+1316-                              "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
+1317-                              !(!isOnlyUrls && (msg.content?.trim() || msg.text?.trim())) && "ml-auto",
+1318-                              isOnlyUrls ? "text-neutral-500" : (isMe ? "text-primary-200" : "text-neutral-500")
+1319-                            )}>
+1320-                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
+1321-                              {msgTimeString}
+1322-                              {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
+1323-                              {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
+1324-                            </div>
+1325-                          </div>
+1326-                        </div>
+1327-
+1328-                        {/* Render Link Previews Outside Bubble */}
+1329-                        {!isOnlyUrls && (() => {
+1330-                          const uniqueUrls = Array.from(new Set(urls));
+1331-                          if (uniqueUrls.length === 0 || msg.deletedForAll || msg.deletedForMe) return null;
+1332-                          return (
+1333-                            <div className={clsx("flex flex-col gap-2 mt-1 w-full", isMe ? "items-end" : "items-start")}>
+1334-                              {uniqueUrls.map((url: string) => (
+1335-                                <LinkPreview key={url} url={url} />
+1336-                              ))}
+1337-                            </div>
+1338-                          );
+1339-                        })()}
+1340-                        </>
+1341-                        )})()}
+1342-
+1343-                      </div>
+1344-                    </div>
+1345-                  </motion.div>
+1346-                  </React.Fragment>
+1347-                );
+1348-              })}
+1349-              <div ref={messagesEndRef} />
+1350-            </div>
+1351-
+1352-            {/* Scroll to bottom button */}
+1353-            <AnimatePresence>
+1354-              {showScrollButton && (
+1355-                <motion.div
+1356-                  initial={{ opacity: 0, scale: 0.8, y: 10 }}
+1357-                  animate={{ opacity: 1, scale: 1, y: 0 }}
+1358-                  exit={{ opacity: 0, scale: 0.8, y: 10 }}
+1359-                  className="absolute bottom-24 right-6 z-10"
+1360-                >
+1361-                  <button
+1362-                    onClick={() => scrollToBottom('smooth')}
+1363-                    className="w-10 h-10 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-full shadow-lg flex items-center justify-center text-neutral-300 hover:text-white transition-colors"
+1364-                  >
+1365-                    <ChevronDown className="w-5 h-5" />
+1366-                  </button>
+1367-                </motion.div>
+1368-              )}
+1369-            </AnimatePresence>
+1370-
+1371-              <div className="p-4 bg-neutral-900 border-t border-neutral-800 relative flex flex-col gap-2">
+1372-                {/* Replying To Preview */}
+1373-                <AnimatePresence>
+1374-                  {replyingTo && (
+1375-                    <motion.div 
+1376-                      initial={{ opacity: 0, y: 10, height: 0 }}
+1377-                      animate={{ opacity: 1, y: 0, height: 'auto' }}
+1378-                      exit={{ opacity: 0, y: 10, height: 0 }}
+1379-                      className="flex items-center justify-between bg-neutral-800/50 rounded-xl p-3 border border-neutral-700/50"
+1380-                    >
+1381-                      <div className="flex flex-col overflow-hidden">
+1382-                        <span className="text-xs font-bold text-primary-400">Replying to {replyingTo.author?.name || 'Unknown'}</span>
+1383-                        <span className="text-sm text-neutral-300 truncate">{replyingTo.content}</span>
+1384-                      </div>
+1385-                      <button 
+1386-                        onClick={() => setReplyingTo(null)}
+1387-                        className="p-1 text-neutral-400 hover:text-white hover:bg-neutral-700 rounded-full transition-colors"
+1388-                      >
+1389-                        <X className="w-4 h-4" />
+1390-                      </button>
+1391-                    </motion.div>
+1392-                  )}
+1393-                </AnimatePresence>
+1394-

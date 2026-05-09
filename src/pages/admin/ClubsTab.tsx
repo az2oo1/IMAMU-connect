@@ -1,4 +1,6 @@
+import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
+import AdminPagination from '../../components/AdminPagination';
 import { Search, Plus, Trash2, Users, Edit2 } from 'lucide-react';
 import EditClubModal from './EditClubModal';
 import TagInput from '../../components/TagInput';
@@ -7,31 +9,49 @@ export default function ClubsTab() {
   const [clubs, setClubs] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const LIMIT = 20;
   const [isCreating, setIsCreating] = useState(false);
   const [newClubName, setNewClubName] = useState('');
   const [newClubDesc, setNewClubDesc] = useState('');
   const [newClubTags, setNewClubTags] = useState('');
   const [editingClub, setEditingClub] = useState<any>(null);
 
-  const fetchClubs = async () => {
+  const fetchClubs = async (currentSearch = searchQuery, currentPage = page) => {
     try {
-      const res = await fetch('/api/admin/clubs', {
+      setIsLoading(true);
+      const res = await fetch(`/api/admin/clubs?page=${currentPage}&limit=${LIMIT}&search=${encodeURIComponent(currentSearch)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
         const data = await res.json();
         setClubs(data.clubs);
+        if (data.totalPages) {
+          setTotalPages(data.totalPages);
+          setTotalItems(data.total);
+        }
       }
     } catch (error) {
-      console.error('Failed to fetch clubs', error);
+      console.error('Failed to fetch', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchClubs();
-  }, []);
+    fetchClubs(searchQuery, page);
+  }, [page]);
+  
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (page !== 1) setPage(1);
+      else fetchClubs();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleCreateClub = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,10 +91,7 @@ export default function ClubsTab() {
     }
   };
 
-  const filteredClubs = clubs.filter(club => 
-    club?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
-  );
-
+  
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -92,7 +109,7 @@ export default function ClubsTab() {
       </div>
 
       {isCreating && (
-        <div className="mb-8 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
+        <div className="mb-8 border border-neutral-800 bg-neutral-950/40 rounded-xl p-6">
           <h3 className="text-lg font-bold text-white mb-4">Create New Club</h3>
           <form onSubmit={handleCreateClub} className="space-y-4">
             <div>
@@ -101,7 +118,7 @@ export default function ClubsTab() {
                 type="text"
                 value={newClubName}
                 onChange={(e) => setNewClubName(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-primary-500"
+                className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2 text-white focus:outline-none focus:border-primary-500"
                 required
               />
             </div>
@@ -110,7 +127,7 @@ export default function ClubsTab() {
               <textarea
                 value={newClubDesc}
                 onChange={(e) => setNewClubDesc(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
+                className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
                 required
               />
             </div>
@@ -141,8 +158,8 @@ export default function ClubsTab() {
         </div>
       )}
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-neutral-800 flex items-center gap-4">
+      <div className="border border-neutral-800 bg-neutral-950/40 rounded-xl overflow-hidden">
+        <div className="p-3 border-b border-neutral-800 flex items-center gap-3 bg-neutral-900/20">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
             <input 
@@ -150,7 +167,7 @@ export default function ClubsTab() {
               placeholder="Search clubs..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2.5 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm text-white focus:outline-none focus:border-primary-500 transition-colors"
             />
           </div>
         </div>
@@ -158,7 +175,7 @@ export default function ClubsTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-neutral-800 bg-neutral-950/50">
+              <tr className="border-b border-neutral-800 bg-neutral-900/40 text-xs uppercase tracking-wider text-neutral-500">
                 <th className="p-4 text-sm font-medium text-neutral-400">Club Name</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Members</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Created</th>
@@ -167,14 +184,12 @@ export default function ClubsTab() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-neutral-500">Loading clubs...</td>
-                </tr>
-              ) : filteredClubs.length === 0 ? (
+                <TableSkeleton />
+              ) : clubs.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-neutral-500">No clubs found.</td>
                 </tr>
-              ) : filteredClubs.map((club) => (
+              ) : clubs.map((club) => (
                 <tr key={club.id} className="border-b border-neutral-800 hover:bg-neutral-800/30 transition-colors">
                   <td className="p-4">
                     <p className="font-medium text-white">{club.name}</p>
@@ -210,6 +225,15 @@ export default function ClubsTab() {
             </tbody>
           </table>
         </div>
+
+        <AdminPagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          totalItems={totalItems} 
+          itemsPerPage={LIMIT} 
+          onPageChange={setPage} 
+        />
+  
       </div>
 
       {editingClub && (

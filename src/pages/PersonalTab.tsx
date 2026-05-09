@@ -5,21 +5,21 @@ import { clsx } from 'clsx';
 import OptimizedImage from '../components/OptimizedImage';
 import { useUser } from '../contexts/UserContext';
 import { getIconForUrl, getPlatformName } from '../utils/linkHelpers';
-
+import ProfileArticlesList from '../components/ProfileArticlesList';
+import FollowListModal from '../components/FollowListModal';
 export default function PersonalTab() {
   const { user, updateProfile, uploadImage } = useUser();
-  const [activeTab, setActiveTab] = useState<'posts' | 'saved'>('posts');
-  
+  const [activeTab, setActiveTab] = useState<'posts' | 'saved' | 'news'>('posts');
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
-  
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editName, setEditName] = useState(user?.name || '');
   const [editBio, setEditBio] = useState(user?.bio || '');
   const [editLinks, setEditLinks] = useState<string[]>(user?.links?.map(l => l.url) || []);
   const [saving, setSaving] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
-
+  const [isFollowModalOpen, setIsFollowModalOpen] = useState(false);
+  const [followModalTab, setFollowModalTab] = useState<'followers' | 'following'>('followers');
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -36,7 +36,6 @@ export default function PersonalTab() {
       setSaving(false);
     }
   };
-
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, type: 'avatar' | 'banner') => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -50,7 +49,6 @@ export default function PersonalTab() {
       setTimeout(() => setUploadMessage(null), 3000);
     }
   };
-
   if (!user) {
     return (
       <div className="flex-1 flex items-center justify-center text-neutral-400">
@@ -58,12 +56,11 @@ export default function PersonalTab() {
       </div>
     );
   }
-
   return (
     <motion.div 
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex-1 overflow-y-auto custom-scrollbar relative"
+      className="flex-1 h-full overflow-y-auto custom-scrollbar relative"
     >
       <AnimatePresence>
         {uploadMessage && (
@@ -77,7 +74,6 @@ export default function PersonalTab() {
           </motion.div>
         )}
       </AnimatePresence>
-
       {/* Cover Photo */}
       <div className="h-48 md:h-64 bg-neutral-900 relative group cursor-pointer overflow-hidden" onClick={() => bannerInputRef.current?.click()}>
         <OptimizedImage 
@@ -93,7 +89,6 @@ export default function PersonalTab() {
         </div>
         <input type="file" ref={bannerInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'banner')} />
       </div>
-
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative -mt-16">
         {/* Profile Header */}
         <div className="bg-neutral-900/80 backdrop-blur-xl border border-neutral-800 rounded-3xl p-6 shadow-xl mb-6">
@@ -112,12 +107,24 @@ export default function PersonalTab() {
               </div>
               <input type="file" ref={avatarInputRef} className="hidden" accept="image/*" onChange={(e) => handleImageUpload(e, 'avatar')} />
             </div>
-            
             <div className="flex-1 pb-2">
               <h1 className="text-2xl font-bold text-white">{user.name || user.username}</h1>
               <p className="text-primary-400 font-medium">@{user.username}</p>
+              <div className="flex items-center gap-4 mt-2 text-sm">
+                <div 
+                  className="text-white cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => { setFollowModalTab('followers'); setIsFollowModalOpen(true); }}
+                >
+                  <span className="font-bold">{user._count?.followers || 0}</span> <span className="text-neutral-500">Followers</span>
+                </div>
+                <div 
+                  className="text-white cursor-pointer hover:opacity-80 transition-opacity"
+                  onClick={() => { setFollowModalTab('following'); setIsFollowModalOpen(true); }}
+                >
+                  <span className="font-bold">{(user._count?.following || 0) + (user._count?.clubFollowing || 0)}</span> <span className="text-neutral-500">Following</span>
+                </div>
+              </div>
             </div>
-
             <button 
               onClick={() => {
                 setEditName(user.name || '');
@@ -130,11 +137,9 @@ export default function PersonalTab() {
               Edit Profile
             </button>
           </div>
-
           <div className="mt-6 text-neutral-300 text-sm max-w-2xl leading-relaxed">
             {user.bio || "No bio added yet."}
           </div>
-
           <div className="mt-4 flex flex-wrap gap-4 text-sm text-neutral-500">
             {user.links?.map((link) => (
               <a key={link.id} href={link.url} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1.5 hover:text-primary-400 transition-colors">
@@ -146,19 +151,8 @@ export default function PersonalTab() {
                 <Calendar className="w-4 h-4" /> Joined {new Date(user.createdAt).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
               </div>
             )}
-            {user.studentEmail && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-4 h-4" /> Student Email: {user.studentEmail}
-              </div>
-            )}
-            {user.googleEmail && (
-              <div className="flex items-center gap-1.5">
-                <Calendar className="w-4 h-4" /> Google Email: {user.googleEmail}
-              </div>
-            )}
           </div>
         </div>
-
         <div className="flex border-b border-neutral-800 mb-8">
           <button
             onClick={() => setActiveTab('posts')}
@@ -169,28 +163,35 @@ export default function PersonalTab() {
           >
             Posts
           </button>
-          <button
-            onClick={() => setActiveTab('saved')}
-            className={clsx(
-              "flex-1 py-4 text-sm font-medium transition-colors border-b-2",
-              activeTab === 'saved' ? "border-primary-500 text-primary-400" : "border-transparent text-neutral-500 hover:text-neutral-300"
-            )}
-          >
-            Saved
-          </button>
+          {(user.role === 'NEWS_WRITER' || user.role === 'ADMIN') && (
+            <button
+              onClick={() => setActiveTab('news')}
+              className={clsx(
+                "flex-1 py-4 text-sm font-medium transition-colors border-b-2",
+                activeTab === 'news' ? "border-primary-500 text-primary-400" : "border-transparent text-neutral-500 hover:text-neutral-300"
+              )}
+            >
+              Articles
+            </button>
+          )}
         </div>
-
-        <div className="text-center py-20 bg-neutral-900/30 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
-          <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-500/20">
-            <Compass className="w-8 h-8 text-primary-400" />
+        {activeTab === 'posts' && (
+          <div className="text-center py-20 bg-neutral-900/30 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
+            <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-500/20">
+              <Compass className="w-8 h-8 text-primary-400" />
+            </div>
+            <h3 className="text-xl font-bold text-white mb-2">Posts</h3>
+            <p className="text-neutral-400 max-w-md mx-auto">
+              This feature is connected to the upcoming Explore tab. Check back soon to see your posts!
+            </p>
           </div>
-          <h3 className="text-xl font-bold text-white mb-2">Posts & Saved</h3>
-          <p className="text-neutral-400 max-w-md mx-auto">
-            This feature is connected to the upcoming Explore tab. Check back soon to see your posts and saved content!
-          </p>
-        </div>
+        )}
+        {activeTab === 'news' && (
+          <div className="mt-8">
+            <ProfileArticlesList profileUserId={user.id} currentUserId={user.id} />
+          </div>
+        )}
       </div>
-
       {/* Edit Profile Modal */}
       <AnimatePresence>
         {isEditModalOpen && (
@@ -214,7 +215,6 @@ export default function PersonalTab() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              
               <div className="p-6">
                 <form onSubmit={handleSaveProfile} className="space-y-4">
                   <div>
@@ -293,6 +293,12 @@ export default function PersonalTab() {
           </div>
         )}
       </AnimatePresence>
+      <FollowListModal
+        isOpen={isFollowModalOpen}
+        onClose={() => setIsFollowModalOpen(false)}
+        username={user.username}
+        initialTab={followModalTab}
+      />
     </motion.div>
   );
 }

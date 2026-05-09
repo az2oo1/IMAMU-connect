@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700;800;900&display=swap');
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 @theme {
   --color-primary-100: var(--accent-100);
@@ -24,6 +25,10 @@
     display: none;
   }
   
+  .custom-scrollbar {
+    scrollbar-color: #3f3f46 transparent;
+    scrollbar-width: thin;
+  }
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
     height: 6px;
@@ -40,7 +45,38 @@
   }
 }
 
+@layer utilities {
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    background: transparent;
+  }
+  
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    border: 2px solid #171717; /* neutral-900 border to fit in better */
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  }
+
+  input[type="range"]::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    background: #ffffff;
+    border: 2px solid #171717;
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+  }
+}
+
 :root {
+  color-scheme: dark;
   --theme-h: 250;
   --theme-s: 80%;
   --theme-l: 50%;
@@ -92,3 +128,13 @@ body {
 .custom-popup h3 {
   color: #f5f5f5 !important;
 }
+
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 3px solid var(--accent-500);
+}
+

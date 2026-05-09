@@ -74,7 +74,7 @@ export default function CourseUsersModal({ courseId, courseName, onClose }: Cour
                 placeholder="Search users by name, username, or email..." 
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-neutral-950 border border-neutral-800 rounded-xl py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary-500 text-neutral-200 transition-colors"
+                className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm py-2.5 pl-10 pr-4 text-sm focus:outline-none focus:border-primary-500 text-neutral-200 transition-colors"
               />
             </div>
           </div>

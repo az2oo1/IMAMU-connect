@@ -1,4 +1,6 @@
+import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
+import AdminPagination from '../../components/AdminPagination';
 import { Search, Edit2, Ban, CheckCircle2, User as UserIcon } from 'lucide-react';
 import EditUserModal from './EditUserModal';
 import AdminUserProfileModal from './AdminUserProfileModal';
@@ -7,28 +9,46 @@ export default function UsersTab() {
   const [users, setUsers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const LIMIT = 20;
   const [editingUserId, setEditingUserId] = useState<string | null>(null);
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (currentSearch = searchQuery, currentPage = page) => {
     try {
-      const res = await fetch('/api/admin/users', {
+      setIsLoading(true);
+      const res = await fetch(`/api/admin/users?page=${currentPage}&limit=${LIMIT}&search=${encodeURIComponent(currentSearch)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
         const data = await res.json();
         setUsers(data.users);
+        if (data.totalPages) {
+          setTotalPages(data.totalPages);
+          setTotalItems(data.total);
+        }
       }
     } catch (error) {
-      console.error('Failed to fetch users', error);
+      console.error('Failed to fetch', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
-  }, []);
+    fetchUsers(searchQuery, page);
+  }, [page]);
+  
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (page !== 1) setPage(1);
+      else fetchUsers();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleRoleChange = async (userId: string, newRole: string) => {
     try {
@@ -66,13 +86,7 @@ export default function UsersTab() {
     }
   };
 
-  const filteredUsers = users.filter(user => 
-    user?.username?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
-    user?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
-    user?.studentEmail?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
-    user?.googleEmail?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
-  );
-
+  
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="mb-8">
@@ -80,8 +94,8 @@ export default function UsersTab() {
         <p className="text-neutral-400">Manage users, roles, and permissions across the platform.</p>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-neutral-800 flex items-center gap-4">
+      <div className="border border-neutral-800 bg-neutral-950/40 rounded-xl overflow-hidden">
+        <div className="p-3 border-b border-neutral-800 flex items-center gap-3 bg-neutral-900/20">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
             <input 
@@ -89,7 +103,7 @@ export default function UsersTab() {
               placeholder="Search users by name, username, or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2.5 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm text-white focus:outline-none focus:border-primary-500 transition-colors"
             />
           </div>
         </div>
@@ -97,7 +111,7 @@ export default function UsersTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-neutral-800 bg-neutral-950/50">
+              <tr className="border-b border-neutral-800 bg-neutral-900/40 text-xs uppercase tracking-wider text-neutral-500">
                 <th className="p-4 text-sm font-medium text-neutral-400">User</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Role</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Status</th>
@@ -106,14 +120,12 @@ export default function UsersTab() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-neutral-500">Loading users...</td>
-                </tr>
-              ) : filteredUsers.length === 0 ? (
+                <TableSkeleton />
+              ) : users.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-neutral-500">No users found.</td>
                 </tr>
-              ) : filteredUsers.map((user) => (
+              ) : users.map((user) => (
                 <tr key={user.id} className="border-b border-neutral-800 hover:bg-neutral-800/30 transition-colors">
                   <td className="p-4">
                     <div className="flex items-center gap-3">
@@ -186,6 +198,15 @@ export default function UsersTab() {
             </tbody>
           </table>
         </div>
+
+        <AdminPagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          totalItems={totalItems} 
+          itemsPerPage={LIMIT} 
+          onPageChange={setPage} 
+        />
+  
       </div>
 
       <EditUserModal 

@@ -1,4 +1,6 @@
+import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
+import AdminPagination from '../../components/AdminPagination';
 import { Search, Trash2, Calendar } from 'lucide-react';
 
 export default function NewsTab() {
@@ -6,19 +8,28 @@ export default function NewsTab() {
   const [tags, setTags] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const LIMIT = 20;
   const [newTag, setNewTag] = useState('');
 
-  const fetchArticles = async () => {
+  const fetchArticles = async (currentSearch = searchQuery, currentPage = page) => {
     try {
-      const res = await fetch('/api/admin/news', {
+      setIsLoading(true);
+      const res = await fetch(`/api/admin/news?page=${currentPage}&limit=${LIMIT}&search=${encodeURIComponent(currentSearch)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
         const data = await res.json();
         setArticles(data.articles);
+        if (data.totalPages) {
+          setTotalPages(data.totalPages);
+          setTotalItems(data.total);
+        }
       }
     } catch (error) {
-      console.error('Failed to fetch articles', error);
+      console.error('Failed to fetch', error);
     } finally {
       setIsLoading(false);
     }
@@ -90,11 +101,7 @@ export default function NewsTab() {
     }
   };
 
-  const filteredArticles = articles.filter(article => 
-    article?.title?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
-    article?.author?.username?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
-  );
-
+  
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="mb-8">
@@ -102,8 +109,8 @@ export default function NewsTab() {
         <p className="text-neutral-400">Manage news articles written by users and news writers.</p>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl mb-12">
-        <div className="p-4 border-b border-neutral-800 flex items-center gap-4">
+      <div className="border border-neutral-800 bg-neutral-950/40 rounded-xl overflow-hidden mb-12">
+        <div className="p-3 border-b border-neutral-800 flex items-center gap-3 bg-neutral-900/20">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
             <input 
@@ -111,7 +118,7 @@ export default function NewsTab() {
               placeholder="Search articles by title or author..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2.5 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm text-white focus:outline-none focus:border-primary-500 transition-colors"
             />
           </div>
         </div>
@@ -119,7 +126,7 @@ export default function NewsTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-neutral-800 bg-neutral-950/50">
+              <tr className="border-b border-neutral-800 bg-neutral-900/40 text-xs uppercase tracking-wider text-neutral-500">
                 <th className="p-4 text-sm font-medium text-neutral-400">Title</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Author</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Date</th>
@@ -128,14 +135,12 @@ export default function NewsTab() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-neutral-500">Loading articles...</td>
-                </tr>
-              ) : filteredArticles.length === 0 ? (
+                <TableSkeleton />
+              ) : articles.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-neutral-500">No articles found.</td>
                 </tr>
-              ) : filteredArticles.map((article) => (
+              ) : articles.map((article) => (
                 <tr key={article.id} className={`border-b border-neutral-800 hover:bg-neutral-800/30 transition-colors ${article.isArchived ? 'opacity-50' : ''}`}>
                   <td className="p-4">
                     <p className="font-medium text-white line-clamp-1">
@@ -171,6 +176,15 @@ export default function NewsTab() {
             </tbody>
           </table>
         </div>
+
+        <AdminPagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          totalItems={totalItems} 
+          itemsPerPage={LIMIT} 
+          onPageChange={setPage} 
+        />
+  
       </div>
 
       <div className="mb-8 mt-16">
@@ -185,7 +199,7 @@ export default function NewsTab() {
             value={newTag}
             onChange={(e) => setNewTag(e.target.value)}
             placeholder="New tag name (e.g. Tryouts, Exams)"
-            className="flex-1 bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+            className="flex-1 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
           />
           <button type="submit" className="px-6 py-2.5 bg-primary-500 text-white font-bold rounded-xl hover:bg-primary-600 transition-colors">
             Add Tag
@@ -196,7 +210,7 @@ export default function NewsTab() {
           {tags.map(tag => (
             <div key={tag.id} className="flex items-center gap-2 bg-neutral-800 px-4 py-2 rounded-xl text-neutral-300">
               <span className="font-medium">{tag.name}</span>
-              <button onClick={() => handleDeleteTag(tag.id)} className="text-neutral-500 hover:text-red-400 p-0.5 rounded transition-colors">
+              <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteTag(tag.id); }} className="text-neutral-500 hover:text-red-400 p-0.5 rounded transition-colors">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

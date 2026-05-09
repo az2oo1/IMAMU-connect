@@ -10,6 +10,7 @@ interface ProfilePopoverProps {
   key?: React.Key;
   username?: string;
   user?: {
+    id?: string;
     name: string;
     handle: string;
     avatar: string;
@@ -42,10 +43,17 @@ export default function ProfilePopover({ children, username, user: initialUser }
   useEffect(() => {
     if (isOpen && username && !fetchedUser && !loading) {
       setLoading(true);
-      fetch(`/api/users/${username}`)
+      const headers: any = {};
+      const token = localStorage.getItem('token');
+      if (token) headers['Authorization'] = `Bearer ${token}`;
+
+      fetch(`/api/users/${username}`, { headers })
         .then(res => res.json())
         .then(data => {
-          if (data.user) setFetchedUser(data.user);
+          if (data.user) {
+             setFetchedUser(data.user);
+             setIsFollowing(data.user.isFollowing || false);
+          }
         })
         .catch(console.error)
         .finally(() => setLoading(false));
@@ -120,6 +128,14 @@ export default function ProfilePopover({ children, username, user: initialUser }
           e.stopPropagation();
           setIsOpen(!isOpen);
         }} 
+        onMouseEnter={() => {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => setIsOpen(true), 300);
+        }}
+        onMouseLeave={() => {
+          if (timeoutRef.current) clearTimeout(timeoutRef.current);
+          timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
+        }}
         className="cursor-pointer inline-block"
       >
         {children}
@@ -135,7 +151,8 @@ export default function ProfilePopover({ children, username, user: initialUser }
                  setIsOpen(true);
               }}
               onMouseLeave={() => {
-                 timeoutRef.current = setTimeout(() => setIsOpen(false), 150);
+                 if (timeoutRef.current) clearTimeout(timeoutRef.current);
+                 timeoutRef.current = setTimeout(() => setIsOpen(false), 300);
               }}
               initial={{ opacity: 0, y: position === 'top' ? 10 : -10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -168,14 +185,27 @@ export default function ProfilePopover({ children, username, user: initialUser }
                   className="w-16 h-16 rounded-full border-4 border-neutral-900 object-cover bg-neutral-800"
                 />
                 <button 
-                  onClick={(e) => {
+                  onClick={async (e) => {
                     e.stopPropagation();
-                    setIsFollowing(!isFollowing);
+                    if (!initialUser && !fetchedUser) return;
+                    const targetId = fetchedUser ? fetchedUser.id : initialUser.id;
+                    try {
+                      const res = await fetch(`/api/users/${targetId}/follow`, {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        setIsFollowing(data.following);
+                      }
+                    } catch (err) {
+                      console.error("Follow error", err);
+                    }
                   }}
-                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${
+                  className={`px-4 py-1.5 rounded-full text-sm font-bold transition-colors ${
                     isFollowing 
                       ? 'bg-neutral-800 text-white hover:bg-neutral-700 border border-neutral-700' 
-                      : 'bg-white text-black hover:bg-neutral-200'
+                      : 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
                   }`}
                 >
                   {isFollowing ? 'Following' : 'Follow'}

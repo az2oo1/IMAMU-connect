@@ -1,19 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Outlet, NavLink, useNavigate, useLocation } from 'react-router-dom';
-import { Users, Building2, BookOpen, Newspaper, AlertTriangle, LogOut, Shield, Download } from 'lucide-react';
-import { clsx } from 'clsx';
+import { Map, BookOpen, Compass, Users, User, Settings, LogOut, X, Check, Search, Newspaper, Shield, Tent, ChevronDown, MoreHorizontal, Calendar, Bookmark, Bell, MessageSquare, Edit } from 'lucide-react';
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+import { useTheme } from '../../ThemeContext';
+import { useUser } from '../../contexts/UserContext';
+import { useSocket } from '../../contexts/SocketContext';
+import { motion, AnimatePresence } from 'motion/react';
+import AuthModal from '../../components/AuthModal';
+import OptimizedImage from '../../components/OptimizedImage';
+import GlobalSearchModal from '../../components/GlobalSearchModal';
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
+}
 
 export default function AdminLayout() {
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const moreDropdownRef = useRef<HTMLDivElement>(null);
+  const notificationsRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate();
+
   const location = useLocation();
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
 
+  const { isAuthenticated, user, logout } = useUser();
+  const { socket } = useSocket();
+  const { navOrder, hiddenNavItems } = useTheme();
+
+  const [notifications, setNotifications] = useState<any[]>([]);
+  const unreadCount = notifications.filter(n => !n.read).length;
+
   useEffect(() => {
+    let mounted = true;
     const checkAdminStatus = async () => {
       const token = localStorage.getItem('token');
       if (!token) {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
         if (location.pathname !== '/admin/login') {
           navigate('/admin/login');
         }
@@ -28,7 +58,7 @@ export default function AdminLayout() {
           const data = await res.json();
           const isAdminEmail = data.user.studentEmail === 'abdulazizalgassem4@gmail.com' || data.user.googleEmail === 'abdulazizalgassem4@gmail.com';
           if (data.user.role === 'ADMIN' || isAdminEmail) {
-            setIsAdminAuthenticated(true);
+            if (mounted) setIsAdminAuthenticated(true);
           } else {
             if (location.pathname !== '/admin/login') {
               navigate('/admin/login');
@@ -45,18 +75,73 @@ export default function AdminLayout() {
           navigate('/admin/login');
         }
       } finally {
-        setIsLoading(false);
+        if (mounted) setIsLoading(false);
       }
     };
 
     checkAdminStatus();
-  }, [navigate, location.pathname]);
+    
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    setIsAdminAuthenticated(false);
-    navigate('/admin/login');
-  };
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetch('/api/notifications', {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      })
+      .then(res => res.json())
+      .then(data => {
+        if (data.notifications) {
+          setNotifications(data.notifications);
+        }
+      })
+      .catch(console.error);
+    }
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (socket) {
+      const handleNewNotification = (notification: any) => {
+        setNotifications(prev => [notification, ...prev]);
+      };
+
+      socket.on('new_notification', handleNewNotification);
+
+      return () => {
+        socket.off('new_notification', handleNewNotification);
+      };
+    }
+  }, [socket]);
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsProfileOpen(false);
+      }
+      if (moreDropdownRef.current && !moreDropdownRef.current.contains(event.target as Node)) {
+        setIsMoreOpen(false);
+      }
+      if (notificationsRef.current && !notificationsRef.current.contains(event.target as Node)) {
+        setIsNotificationsOpen(false);
+      }
+    }
+    
+    function handleGlobalKeyDown(event: KeyboardEvent) {
+      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
+        event.preventDefault();
+        setIsGlobalSearchOpen(true);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClickOutside);
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      window.removeEventListener("keydown", handleGlobalKeyDown);
+    };
+  }, []);
 
   const handleBackup = async () => {
     try {
@@ -75,11 +160,10 @@ export default function AdminLayout() {
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
       } else {
-        alert('Failed to download backup');
+        // toast needed?
       }
     } catch (error) {
       console.error('Backup failed', error);
-      alert('Backup failed');
     }
   };
 
@@ -97,70 +181,503 @@ export default function AdminLayout() {
     return <Outlet />;
   }
 
-  const navItems = [
+  const handleOpenNotifications = () => {
+    const willOpen = !isNotificationsOpen;
+    setIsNotificationsOpen(willOpen);
+    
+    if (willOpen && unreadCount > 0) {
+      fetch('/api/notifications/read', {
+        method: 'PUT',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      }).then(() => {
+        setNotifications(prev => prev.map(n => ({ ...n, read: true })));
+      }).catch(console.error);
+    }
+  };
+
+  const ALL_NAV_ITEMS = [
     { to: '/admin/users', icon: Users, label: 'Users' },
-    { to: '/admin/clubs', icon: Building2, label: 'Clubs' },
+    { to: '/admin/roles', icon: Users, label: 'Roles' }, // we don't import Network, so fallback to Users or import it
+    { to: '/admin/clubs', icon: Tent, label: 'Clubs' }, // Tent is used for Clubs
     { to: '/admin/courses', icon: BookOpen, label: 'Courses' },
     { to: '/admin/news', icon: Newspaper, label: 'News' },
-    { to: '/admin/reports', icon: AlertTriangle, label: 'Reports' },
+    { to: '/admin/reports', icon: Shield, label: 'Reports' }, // AlertTriangle -> Shield
   ];
 
+  const sortedNavItems = [...ALL_NAV_ITEMS].sort((a, b) => {
+    const indexA = (navOrder || []).indexOf(a.to);
+    const indexB = (navOrder || []).indexOf(b.to);
+    return (indexA !== -1 ? indexA : 99) - (indexB !== -1 ? indexB : 99);
+  });
+
+  const visibleItems = sortedNavItems.filter(item => !(hiddenNavItems || []).includes(item.to));
+  const moreItems = sortedNavItems.filter(item => (hiddenNavItems || []).includes(item.to));
+
   return (
-    <div className="flex h-screen bg-neutral-950 text-neutral-50 overflow-hidden font-sans">
-      {/* Sidebar */}
-      <aside className="w-64 bg-neutral-900 border-r border-neutral-800 flex flex-col">
-        <div className="p-6 border-b border-neutral-800">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-red-500/20 rounded-xl flex items-center justify-center border border-red-500/30">
-              <Shield className="w-5 h-5 text-red-500" />
+    <div className="flex flex-col h-screen bg-neutral-950 text-neutral-50 overflow-hidden font-sans selection:bg-primary-500/30">
+      
+      {/* Top Header (Desktop & Mobile) */}
+      <header className="bg-neutral-950/80 backdrop-blur-xl border-b border-neutral-800/50 z-40 sticky top-0">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center">
+              <Map className="w-5 h-5 text-white" />
             </div>
-            <div>
-              <h1 className="font-bold text-white">Admin Panel</h1>
-              <p className="text-xs text-neutral-400">CampusHub Management</p>
+            <span className="text-xl font-bold text-red-500">Admin Panel</span>
+          </div>
+
+          {/* Desktop Navigation */}
+          <nav className="hidden md:flex items-center gap-1">
+            {visibleItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                className={({ isActive }) => cn(
+                  "relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                  isActive 
+                    ? "text-primary-400" 
+                    : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900"
+                )}
+              >
+                {({ isActive }) => (
+                  <>
+                    {isActive && (
+                      <motion.div
+                        layoutId="nav-active-indicator"
+                        className="absolute inset-0 bg-primary-500/10 rounded-lg"
+                        initial={false}
+                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                      />
+                    )}
+                    <span className="relative z-10 flex items-center gap-2">
+                      <item.icon className="w-4 h-4" />
+                      {item.label}
+                    </span>
+                  </>
+                )}
+              </NavLink>
+            ))}
+
+            {moreItems.length > 0 && (
+              <div className="relative" ref={moreDropdownRef}>
+                <button
+                  onClick={() => setIsMoreOpen(!isMoreOpen)}
+                  className={cn(
+                    "relative flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                    isMoreOpen ? "text-primary-400 bg-neutral-900" : "text-neutral-400 hover:text-neutral-200 hover:bg-neutral-900"
+                  )}
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                  More
+                  <ChevronDown className={cn("w-4 h-4 transition-transform duration-200", isMoreOpen && "rotate-180")} />
+                </button>
+
+                <AnimatePresence>
+                  {isMoreOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-48 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden z-50"
+                    >
+                      <div className="p-1">
+                        {moreItems.map((item) => (
+                          <NavLink
+                            key={item.to}
+                            to={item.to}
+                            onClick={() => setIsMoreOpen(false)}
+                            className={({ isActive }) => cn(
+                              "w-full flex items-center gap-3 px-3 py-2 text-sm rounded-lg transition-colors",
+                              isActive 
+                                ? "text-primary-400 bg-primary-500/10" 
+                                : "text-neutral-300 hover:text-white hover:bg-neutral-800"
+                            )}
+                          >
+                            <item.icon className="w-4 h-4" />
+                            {item.label}
+                          </NavLink>
+                        ))}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+          </nav>
+
+          {/* Profile Dropdown or Login Button */}
+          <div className="flex items-center gap-3">
+            {isAuthenticated && (
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setIsGlobalSearchOpen(true)}
+                  className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 rounded-lg hover:bg-neutral-800 transition-colors focus:outline-none"
+                  title="Search (Cmd+K)"
+                >
+                  <Search className="w-4 h-4" />
+                  <span>Search</span>
+                  <span className="text-xs bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-500 font-mono flex items-center">
+                    <span className="text-[10px] mr-0.5">⌘</span>K
+                  </span>
+                </button>
+                <button
+                  onClick={() => setIsGlobalSearchOpen(true)}
+                  className="md:hidden p-2 text-neutral-400 hover:text-white hover:bg-neutral-900 rounded-full transition-colors focus:outline-none"
+                  title="Search"
+                >
+                  <Search className="w-5 h-5" />
+                </button>
+                {(user?.role === 'NEWS_WRITER' || user?.role === 'ADMIN') && (
+                  <button
+                    onClick={() => navigate('/compose')}
+                    className="p-2 text-neutral-400 hover:text-white hover:bg-neutral-900 rounded-full transition-colors focus:outline-none"
+                    title="Compose Article"
+                  >
+                    <Edit className="w-5 h-5" />
+                  </button>
+                )}
+                <div className="relative" ref={notificationsRef}>
+                <button 
+                  onClick={handleOpenNotifications}
+                  className="relative p-2 text-neutral-400 hover:text-white hover:bg-neutral-900 rounded-full transition-colors focus:outline-none"
+                >
+                  <Bell className="w-5 h-5" />
+                  {/* Unread badge indicator */}
+                  {unreadCount > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-neutral-950"></span>
+                  )}
+                </button>
+
+                <AnimatePresence>
+                  {isNotificationsOpen && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-80 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden z-50 flex flex-col"
+                    >
+                      <div className="p-3 border-b border-neutral-800 bg-neutral-900/50 flex items-center justify-between">
+                        <h3 className="text-sm font-bold text-white">Notifications</h3>
+                      </div>
+                      <div className="max-h-80 overflow-y-auto custom-scrollbar p-2 space-y-1">
+                        {notifications.length === 0 ? (
+                          <div className="p-4 text-center text-neutral-500 text-sm">
+                            No notifications yet.
+                          </div>
+                        ) : (
+                          notifications.slice(0, 5).map(notification => (
+                            <div 
+                              key={notification.id} 
+                              onClick={() => {
+                                setIsNotificationsOpen(false);
+                                if (notification.link) {
+                                  // Fix for legacy links
+                                  const fixedLink = notification.link.startsWith('/app/') ? notification.link.replace('/app/', '/') : notification.link;
+                                  navigate(fixedLink);
+                                }
+                              }}
+                              className="p-3 hover:bg-neutral-800 rounded-lg cursor-pointer transition-colors"
+                            >
+                              <p className="text-sm text-neutral-200">{notification.content}</p>
+                              <p className="text-xs text-neutral-500 mt-1">
+                                {new Date(notification.createdAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                      <div className="p-2 border-t border-neutral-800">
+                        <button 
+                          onClick={() => {
+                            navigate('/notifications');
+                            setIsNotificationsOpen(false);
+                          }}
+                          className="w-full py-2 text-sm text-primary-400 hover:text-primary-300 font-medium text-center transition-colors"
+                        >
+                          View all notifications
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+              </div>
+            )}
+
+            <div className="relative" ref={dropdownRef}>
+            {isAuthenticated ? (
+              <>
+                <button 
+                  onClick={() => setIsProfileOpen(!isProfileOpen)}
+                  className="flex items-center gap-2 hover:bg-neutral-900 p-1.5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+                >
+                  <OptimizedImage 
+                    src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id || 'default'}/100/100`} 
+                    alt="Profile" 
+                    variant="small"
+                    className="w-8 h-8 rounded-full border border-neutral-800 object-cover"
+                  />
+                </button>
+
+                <AnimatePresence>
+                  {isProfileOpen && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute right-0 mt-2 w-56 bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden z-50"
+                    >
+                      <div className="p-3 border-b border-neutral-800 bg-neutral-900/50">
+                        <p className="text-sm font-medium text-white">{user?.name || user?.username || 'Student'}</p>
+                        <p className="text-xs text-neutral-400 truncate">{user?.studentEmail || `@${user?.username}`}</p>
+                      </div>
+                      <div className="p-1">
+                        <button 
+                          onClick={() => {
+                            navigate('/personal');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                        >
+                          <User className="w-4 h-4" />
+                          Profile
+                        </button>
+                        <button 
+                          onClick={() => {
+                            navigate('/messages');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                        >
+                          <MessageSquare className="w-4 h-4" />
+                          Messages
+                        </button>
+                        <button 
+                          onClick={() => {
+                            navigate('/saved');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                        >
+                          <Bookmark className="w-4 h-4" />
+                          Saved
+                        </button>
+                        <button 
+                          onClick={() => {
+                            navigate('/settings');
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                        >
+                          <Settings className="w-4 h-4" />
+                          Settings
+                        </button>
+                        {user?.clubMemberships && user.clubMemberships.length > 0 && (
+                          <div className="my-1 border-t border-neutral-800/50 pt-1">
+                            <span className="px-3 py-1 text-xs font-bold text-neutral-500 uppercase tracking-wider">Managed Clubs</span>
+                            {user.clubMemberships.map((membership: any) => (
+                              <button 
+                                key={membership.club.id}
+                                onClick={() => {
+                                  navigate(`/clubs/${membership.club.id}/manage`);
+                                  setIsProfileOpen(false);
+                                }}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors overflow-hidden group"
+                              >
+                                {membership.club.avatarUrl ? (
+                                  <img src={membership.club.avatarUrl} alt="" className="w-4 h-4 rounded object-cover shrink-0" />
+                                ) : (
+                                  <Tent className="w-4 h-4 shrink-0 text-neutral-400 group-hover:text-primary-400" />
+                                )}
+                                <span className="truncate">{membership.club.name}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        
+                        {user?.role === 'ADMIN' && (
+                          <button 
+                            onClick={handleBackup}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                          >
+                            <Bookmark className="w-4 h-4" /> {/* Or Download */}
+                            Backup DB
+                          </button>
+                        )}
+
+                        {user?.role === 'ADMIN' && (
+                          <button 
+                            onClick={() => {
+                              navigate('/news');
+                              setIsProfileOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-3 py-2 text-sm text-primary-400 hover:text-primary-300 hover:bg-primary-500/10 rounded-lg transition-colors"
+                          >
+                            <Compass className="w-4 h-4" />
+                            Exit Admin Panel
+                          </button>
+                        )}
+
+                      </div>
+                      <div className="p-1 border-t border-neutral-800">
+                        <button 
+                          onClick={() => {
+                            logout();
+                            setIsProfileOpen(false);
+                          }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-lg transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          Sign out
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </>
+            ) : (
+              <button 
+                onClick={() => setIsAuthModalOpen(true)}
+                className="bg-primary-600 hover:bg-primary-500 text-white font-medium px-4 py-2 rounded-xl transition-colors text-sm"
+              >
+                Sign In
+              </button>
+            )}
             </div>
           </div>
         </div>
+      </header>
 
-        <nav className="flex-1 p-4 space-y-2">
-          {navItems.map((item) => (
+      {/* Main Content Area */}
+      <main className="flex-1 overflow-hidden relative">
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={location.pathname}
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -10 }}
+            transition={{ duration: 0.15, ease: "easeOut" }}
+            className="h-full w-full overflow-y-auto"
+          >
+            <Outlet />
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {/* Mobile Bottom Navigation */}
+      <nav className="md:hidden bg-neutral-950/80 backdrop-blur-xl border-t border-neutral-800/50 pb-safe z-40 relative">
+        <div className="flex items-center justify-around h-16 px-2 relative">
+          {visibleItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => clsx(
-                "flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors",
-                isActive 
-                  ? "bg-primary-500/10 text-primary-400" 
-                  : "text-neutral-400 hover:text-white hover:bg-neutral-800"
+              className={({ isActive }) => cn(
+                "relative flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                isActive ? "text-primary-400" : "text-neutral-500 hover:text-neutral-300"
               )}
             >
-              <item.icon className="w-5 h-5" />
-              {item.label}
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.div
+                      layoutId="mobile-nav-active-indicator"
+                      className="absolute inset-x-2 inset-y-1 bg-primary-500/10 rounded-xl"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex flex-col items-center gap-1">
+                    <item.icon className="w-5 h-5" />
+                    <span className="text-[10px] font-medium">{item.label}</span>
+                  </span>
+                </>
+              )}
             </NavLink>
           ))}
-        </nav>
 
-        <div className="p-4 border-t border-neutral-800 space-y-2">
-          <button 
-            onClick={handleBackup}
-            className="w-full flex items-center gap-3 px-4 py-3 text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-xl transition-colors font-medium"
-          >
-            <Download className="w-5 h-5" />
-            Backup DB
-          </button>
-          <button 
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-400/10 rounded-xl transition-colors font-medium"
-          >
-            <LogOut className="w-5 h-5" />
-            Sign Out
-          </button>
+          {moreItems.length > 0 && (
+            <button
+              onClick={() => setIsMoreOpen(!isMoreOpen)}
+              className={cn(
+                "relative flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                isMoreOpen ? "text-primary-400" : "text-neutral-500 hover:text-neutral-300"
+              )}
+            >
+              <span className="relative z-10 flex flex-col items-center gap-1">
+                <MoreHorizontal className="w-5 h-5" />
+                <span className="text-[10px] font-medium">More</span>
+              </span>
+            </button>
+          )}
+
+          <NavLink
+              to="/personal"
+              className={({ isActive }) => cn(
+                "relative flex flex-col items-center justify-center w-full h-full gap-1 transition-colors",
+                isActive ? "text-primary-400" : "text-neutral-500 hover:text-neutral-300"
+              )}
+            >
+              {({ isActive }) => (
+                <>
+                  {isActive && (
+                    <motion.div
+                      layoutId="mobile-nav-active-indicator"
+                      className="absolute inset-x-2 inset-y-1 bg-primary-500/10 rounded-xl"
+                      initial={false}
+                      transition={{ type: "spring", stiffness: 300, damping: 30 }}
+                    />
+                  )}
+                  <span className="relative z-10 flex flex-col items-center gap-1">
+                    <OptimizedImage 
+                      src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id || 'default'}/100/100`} 
+                      alt="Profile" 
+                      variant="small"
+                      className="w-5 h-5 rounded-full border border-neutral-800 object-cover"
+                    />
+                    <span className="text-[10px] font-medium">Profile</span>
+                  </span>
+                </>
+              )}
+          </NavLink>
         </div>
-      </aside>
 
-      {/* Main Content */}
-      <main className="flex-1 overflow-y-auto custom-scrollbar bg-neutral-950">
-        <Outlet />
-      </main>
+        {/* Mobile More Dropdown (opens upwards) */}
+        <AnimatePresence>
+          {isMoreOpen && moreItems.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="absolute bottom-full left-0 right-0 mb-2 mx-4 bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl overflow-hidden z-50 md:hidden"
+            >
+              <div className="p-2 grid grid-cols-2 gap-2">
+                {moreItems.map((item) => (
+                  <NavLink
+                    key={item.to}
+                    to={item.to}
+                    onClick={() => setIsMoreOpen(false)}
+                    className={({ isActive }) => cn(
+                      "flex flex-col items-center justify-center gap-2 p-4 rounded-xl transition-colors",
+                      isActive 
+                        ? "text-primary-400 bg-primary-500/10" 
+                        : "text-neutral-300 bg-neutral-800/50 hover:bg-neutral-800"
+                    )}
+                  >
+                    <item.icon className="w-6 h-6" />
+                    <span className="text-xs font-medium">{item.label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </nav>
+
+      <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <GlobalSearchModal isOpen={isGlobalSearchOpen} onClose={() => setIsGlobalSearchOpen(false)} />
     </div>
   );
 }

@@ -1,22 +1,25 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Calendar, Clock, Share2, Bookmark, User, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, Calendar, Clock, Share2, Bookmark, User, ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import FormattedText from './FormattedText';
 import ProfilePopover from './ProfilePopover';
 import OptimizedImage from './OptimizedImage';
 
 interface NewsItem {
-  id: number;
+  id: number | string;
   title: string;
   category: string;
   date: string;
   readTime: string;
   image: string;
-  images?: string[];
+  images?: string[] | string;
   excerpt: string;
+  content?: string;
   featured?: boolean;
-  author?: string;
+  isSaved?: boolean;
+  author?: string | { id?: string; isClub?: boolean; name?: string; avatar?: string; username?: string };
   authorAvatar?: string;
   isFollowedAuthor?: boolean;
 }
@@ -32,17 +35,29 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
   useEffect(() => {
-    if (article) {
-      // Initialize saved state from localStorage
-      const savedArticles = JSON.parse(localStorage.getItem('savedArticles') || '[]');
-      setIsSaved(savedArticles.includes(article.id));
+    if (article && isOpen) {
+      if (article.isSaved !== undefined) {
+        setIsSaved(article.isSaved);
+      } else {
+        const token = localStorage.getItem('token');
+        if (token) {
+          fetch(`/api/news/${article.id}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.article) setIsSaved(data.article.isSaved);
+          })
+          .catch(console.error);
+        }
+      }
     }
-  }, [article]);
+  }, [article, isOpen]);
 
   if (!article) return null;
 
   const handleShare = () => {
-    const shareUrl = `${window.location.origin}/news?articleId=${article.id}`;
+    const shareUrl = `${window.location.origin}/news/${article.id}`;
     if (navigator.share) {
       navigator.share({
         title: article.title,
@@ -50,20 +65,29 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
       }).catch(console.error);
     } else {
       navigator.clipboard.writeText(shareUrl);
-      alert('Link copied to clipboard!');
+      toast('Link copied to clipboard!');
     }
   };
 
-  const handleSave = () => {
-    const savedArticles = JSON.parse(localStorage.getItem('savedArticles') || '[]');
-    let newSaved;
-    if (isSaved) {
-      newSaved = savedArticles.filter((id: number) => id !== article.id);
-    } else {
-      newSaved = [...savedArticles, article.id];
+  const handleSave = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      const res = await fetch(`/api/news/${article.id}/save`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setIsSaved(data.saved);
+        if (article) article.isSaved = data.saved;
+      } else {
+        toast('Please log in to save articles.');
+      }
+    } catch (e) {
+      console.error(e);
     }
-    localStorage.setItem('savedArticles', JSON.stringify(newSaved));
-    setIsSaved(!isSaved);
   };
 
   const getAuthorName = () => {
@@ -73,10 +97,21 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
   };
 
   const authorName = getAuthorName();
-  const authorHandle = authorName.toLowerCase().replace(/\s+/g, '');
-  const authorAvatar = article.authorAvatar || (typeof article.author === 'object' ? (article.author as any).avatar : null) || `https://picsum.photos/seed/${authorName}/100/100`;
+  const rawAuthorHandle = typeof article.author === 'object' && !(article.author as any)?.isClub ? (article.author as any)?.username : null;
+  const authorHandle = rawAuthorHandle || authorName.toLowerCase().replace(/\s+/g, '');
+  const authorAvatar = article.authorAvatar || (typeof article.author === 'object' ? (article.author as any).avatar || (article.author as any).avatarUrl : null) || `https://picsum.photos/seed/${authorName}/100/100`;
 
-  const displayImages = article.images && article.images.length > 0 ? article.images : [article.image];
+  let displayImages = [];
+  try {
+    const rawImages = typeof article.images === 'string' ? JSON.parse(article.images) : (article.images || []);
+    displayImages = rawImages.length > 0 
+      ? rawImages 
+      : article.image 
+        ? [article.image] 
+        : [`https://picsum.photos/seed/${article.id}/800/600`];
+  } catch(e) {
+    displayImages = article.image ? [article.image] : [`https://picsum.photos/seed/${article.id}/800/600`];
+  }
 
   const handleNextImage = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -115,14 +150,13 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
             </button>
 
             {/* Left Side: Image Hero (Spans full width on mobile, half on desktop) */}
-            <div className="w-full md:w-1/2 h-64 md:h-full relative shrink-0 group">
+            <div className="w-full md:w-1/2 h-64 md:h-full relative shrink-0 group border-b md:border-b-0 md:border-r border-neutral-800/60 bg-neutral-900/50">
               <OptimizedImage 
                 src={displayImages[currentImageIndex]} 
                 alt={`${article.title} - Image ${currentImageIndex + 1}`} 
                 variant="banner"
                 className="w-full h-full object-cover transition-opacity duration-300"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/20 to-transparent md:bg-gradient-to-r md:from-transparent md:to-neutral-950" />
               
               {displayImages.length > 1 && (
                 <>
@@ -187,7 +221,7 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
 
                 {/* Author & Actions Bar */}
                 <div className="flex flex-wrap items-center justify-between gap-4 py-6 border-y border-neutral-800/60 mb-8">
-                  {article.author?.isClub ? (
+                  {typeof article.author === 'object' && article.author?.isClub ? (
                     <Link to={`/clubs/${article.author.id}`} onClick={onClose} className="hover:opacity-80 transition-opacity">
                       <div className="flex items-center gap-3 hover:bg-neutral-900/50 p-2 -ml-2 rounded-2xl transition-colors cursor-pointer">
                         <OptimizedImage 
@@ -242,29 +276,22 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
                     >
                       <Bookmark className="w-4 h-4" fill={isSaved ? "currentColor" : "none"} />
                     </button>
+                    <Link
+                      to={`/news/${article.id}`}
+                      onClick={onClose}
+                      className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white font-bold text-sm transition-all ml-2"
+                    >
+                      Read Full Page
+                      <ArrowRight className="w-4 h-4" />
+                    </Link>
                   </div>
                 </div>
 
                 {/* Article Body */}
                 <div className="prose prose-invert prose-lg max-w-none prose-p:text-neutral-300 prose-p:leading-relaxed prose-headings:text-white">
-                  <div className="whitespace-pre-wrap mb-8">
+                  <div className="mb-8">
                     <FormattedText text={article.content || article.excerpt || ''} />
                   </div>
-                  
-                  {article.images && (
-                    <div className="grid grid-cols-2 md:grid-cols-3 gap-4 my-8">
-                      {(() => {
-                        try {
-                          const imgs = typeof article.images === 'string' ? JSON.parse(article.images) : article.images;
-                          return imgs.map((img: string, i: number) => (
-                            <img key={i} src={img} alt={`Gallery ${i}`} className="w-full h-48 object-cover rounded-xl border border-neutral-800" />
-                          ));
-                        } catch (e) {
-                          return null;
-                        }
-                      })()}
-                    </div>
-                  )}
                 </div>
               </div>
             </div>

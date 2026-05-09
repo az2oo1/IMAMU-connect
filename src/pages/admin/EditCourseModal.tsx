@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Shield, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
 
@@ -12,6 +13,29 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
   const [name, setName] = useState(course.name || '');
   const [code, setCode] = useState(course.code || '');
   const [description, setDescription] = useState(course.description || '');
+  const [syllabus, setSyllabus] = useState(course.syllabus || '');
+  const [freeResourcesUrl, setFreeResourcesUrl] = useState(course.freeResourcesUrl || '');
+  const [paidResourcesUrl, setPaidResourcesUrl] = useState(course.paidResourcesUrl || '');
+
+  const [linkName, setLinkName] = useState('');
+  const [linkUrl, setLinkUrl] = useState('');
+  const [activeLinkTarget, setActiveLinkTarget] = useState<'free' | 'paid' | null>(null);
+
+  const handleAddLink = () => {
+    if (!linkName || !linkUrl || !activeLinkTarget) return;
+    
+    const markdownLink = `[${linkName}](${linkUrl})`;
+    
+    if (activeLinkTarget === 'free') {
+      setFreeResourcesUrl(prev => prev ? `${prev}\n- ${markdownLink}` : `- ${markdownLink}`);
+    } else {
+      setPaidResourcesUrl(prev => prev ? `${prev}\n- ${markdownLink}` : `- ${markdownLink}`);
+    }
+    
+    setLinkName('');
+    setLinkUrl('');
+    setActiveLinkTarget(null);
+  };
   const [tags, setTags] = useState(course.tags || '');
   const [avatarUrl, setAvatarUrl] = useState(course.avatarUrl || '');
   const [bannerUrl, setBannerUrl] = useState(course.bannerUrl || '');
@@ -50,17 +74,17 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
     e.preventDefault();
     setError('');
     try {
-      const res = await fetch(`/api/admin/courses/${course.id}`, {
+      const res = await fetch(`/api/courses/${course.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}`
         },
-        body: JSON.stringify({ name, code, description, tags, avatarUrl, bannerUrl })
+        body: JSON.stringify({ name, code, description, syllabus, freeResourcesUrl, paidResourcesUrl, tags, avatarUrl, bannerUrl })
       });
       if (!res.ok) throw new Error('Failed to update course');
       onUpdate();
-      alert('Course updated successfully!');
+      toast('Course updated successfully!');
     } catch (err: any) {
       setError(err.message);
     }
@@ -108,7 +132,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
         throw new Error('Upload failed');
       }
     } catch (err: any) {
-      alert(err.message);
+      toast(err.message);
     }
   };
 
@@ -153,7 +177,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                     required
                   />
                 </div>
@@ -163,7 +187,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                     type="text"
                     value={code}
                     onChange={(e) => setCode(e.target.value)}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                     required
                   />
                 </div>
@@ -174,8 +198,77 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
+                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-neutral-300 mb-1.5">توصيف (Course Syllabus/Details)</label>
+                <textarea
+                  value={syllabus}
+                  onChange={(e) => setSyllabus(e.target.value)}
+                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[120px]"
+                  placeholder="Enter the course syllabus and details..."
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-sm font-medium text-neutral-300">Free Resources</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setActiveLinkTarget(activeLinkTarget === 'free' ? null : 'free')}
+                      className="text-xs text-primary-400 hover:text-primary-300 bg-primary-500/10 px-2 py-1 rounded"
+                    >
+                      + Add Named Link
+                    </button>
+                  </div>
+                  {activeLinkTarget === 'free' && (
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 mb-3 flex flex-col gap-2">
+                      <input type="text" placeholder="Link Name (e.g. Textbook)" value={linkName} onChange={e => setLinkName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-primary-500" />
+                      <input type="url" placeholder="URL (e.g. https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-primary-500" />
+                      <div className="flex justify-end gap-2 mt-1">
+                        <button type="button" onClick={() => setActiveLinkTarget(null)} className="text-xs text-neutral-400">Cancel</button>
+                        <button type="button" onClick={handleAddLink} className="text-xs bg-primary-600 text-white px-3 py-1 rounded">Insert</button>
+                      </div>
+                    </div>
+                  )}
+                  <textarea
+                    value={freeResourcesUrl}
+                    onChange={(e) => setFreeResourcesUrl(e.target.value)}
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
+                    placeholder="Enter links for free resources... You can also use Markdown like [My Link](https://...)"
+                  />
+                </div>
+                <div>
+                  <div className="flex justify-between items-center mb-1.5">
+                    <label className="block text-sm font-medium text-neutral-300">Paid Resources</label>
+                    <button 
+                      type="button" 
+                      onClick={() => setActiveLinkTarget(activeLinkTarget === 'paid' ? null : 'paid')}
+                      className="text-xs text-amber-500 hover:text-amber-400 bg-amber-500/10 px-2 py-1 rounded"
+                    >
+                      + Add Named Link
+                    </button>
+                  </div>
+                  {activeLinkTarget === 'paid' && (
+                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 mb-3 flex flex-col gap-2">
+                      <input type="text" placeholder="Link Name (e.g. Past Papers)" value={linkName} onChange={e => setLinkName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-amber-500" />
+                      <input type="url" placeholder="URL (e.g. https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-amber-500" />
+                      <div className="flex justify-end gap-2 mt-1">
+                        <button type="button" onClick={() => setActiveLinkTarget(null)} className="text-xs text-neutral-400">Cancel</button>
+                        <button type="button" onClick={handleAddLink} className="text-xs bg-amber-600 text-white px-3 py-1 rounded">Insert</button>
+                      </div>
+                    </div>
+                  )}
+                  <textarea
+                    value={paidResourcesUrl}
+                    onChange={(e) => setPaidResourcesUrl(e.target.value)}
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 min-h-[100px]"
+                    placeholder="Enter links for paid resources... You can also use Markdown like [My Link](https://...)"
+                  />
+                </div>
               </div>
 
               <div>
@@ -184,7 +277,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                   type="text"
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                   placeholder="e.g. Computer Science, Programming"
                 />
               </div>
@@ -194,7 +287,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                   <label className="block text-sm font-medium text-neutral-300 mb-1.5">Avatar Image</label>
                   <div className="flex items-center gap-4">
                     {avatarUrl ? (
-                      <img src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
+                      <img referrerPolicy="no-referrer" src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
                     ) : (
                       <div className="w-12 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
                         <ImageIcon className="w-5 h-5 text-neutral-500" />
@@ -220,7 +313,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                   <label className="block text-sm font-medium text-neutral-300 mb-1.5">Banner Image</label>
                   <div className="flex items-center gap-4">
                     {bannerUrl ? (
-                      <img src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
+                      <img referrerPolicy="no-referrer" src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
                     ) : (
                       <div className="w-20 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
                         <ImageIcon className="w-5 h-5 text-neutral-500" />
@@ -267,7 +360,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-neutral-800 overflow-hidden shrink-0">
                           {member.user.avatarUrl ? (
-                            <img src={member.user.avatarUrl} alt="" className="w-full h-full object-cover" />
+                            <img referrerPolicy="no-referrer" src={member.user.avatarUrl} alt="" className="w-full h-full object-cover" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center text-neutral-500 font-bold">
                               {member.user.name.charAt(0)}

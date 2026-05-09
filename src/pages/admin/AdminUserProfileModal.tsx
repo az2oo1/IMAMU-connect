@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect } from 'react';
 import { X, Search, User, Shield, AlertTriangle, FileText, Link as LinkIcon, Users, MessageSquare, ExternalLink } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
@@ -97,10 +98,10 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
        }).catch(console.error);
 
        if(res.ok) {
-          alert('Warning sent to user.');
+          toast('Warning sent to user.');
           fetchProfile();
        } else {
-         alert('Failed to send warning.');
+         toast('Failed to send warning.');
        }
     } catch(e) {
        console.error(e);
@@ -122,7 +123,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
         onClose();
         navigate(`/messages?id=${data.group.id}`);
       } else {
-        alert('Failed to start a conversation with this user');
+        toast('Failed to start a conversation with this user');
       }
     } catch (e) {
       console.error('Failed to start chat', e);
@@ -188,7 +189,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
           {/* Left Column */}
           <div className="space-y-6">
             {/* Basic Info */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4">
               <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2">
                 <User className="w-4 h-4" /> Profile Details
               </h3>
@@ -205,7 +206,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
             </div>
 
             {/* Admin Actions */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4">
                <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2">
                  <Shield className="w-4 h-4 text-red-400" /> Admin Tools
                </h3>
@@ -213,7 +214,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
                  <button 
                    onClick={handleToggleBan}
                    className={clsx(
-                     "w-full text-left px-3 py-2 text-sm font-medium rounded-lg transition-colors border",
+                     "w-full text-left px-3 py-2 text-sm font-medium rounded-lg transition-colors border border-neutral-800",
                      user.isBanned ? "bg-neutral-800 text-neutral-300 hover:text-white border-neutral-700 hover:border-neutral-600" : "bg-red-500/10 text-red-400 hover:bg-red-500/20 border-red-500/20"
                    )}
                  >
@@ -229,7 +230,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
             </div>
 
             {/* Links */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4">
               <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2">
                 <LinkIcon className="w-4 h-4" /> Links
               </h3>
@@ -249,7 +250,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
             </div>
 
             {/* Groups & Courses */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4">
               <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2">
                 <Users className="w-4 h-4" /> Groups & Courses
               </h3>
@@ -283,7 +284,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
           {/* Right Column */}
           <div className="space-y-6">
             {/* Reports */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4">
               <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4" /> Reports
               </h3>
@@ -300,7 +301,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
             </div>
 
             {/* Logs & Reports Authored */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex flex-col h-[300px]">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4 flex flex-col h-[300px]">
               <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2 shrink-0">
                 <AlertTriangle className="w-4 h-4 text-yellow-500" /> Recent Reports Made
               </h3>
@@ -320,7 +321,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
             </div>
 
             {/* Logs */}
-            <div className="bg-neutral-950 border border-neutral-800 rounded-xl p-4 flex flex-col h-[200px]">
+            <div className="bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm p-4 flex flex-col h-[200px]">
               <h3 className="text-sm font-bold text-neutral-300 mb-3 flex items-center gap-2 shrink-0">
                 <FileText className="w-4 h-4" /> Activity Logs
               </h3>

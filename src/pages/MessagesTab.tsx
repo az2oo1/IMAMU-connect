@@ -1,6 +1,7 @@
+import { toast } from 'sonner';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, AlertTriangle } from 'lucide-react';
+import { Hash, Search, Send, Users, Plus, X, Info, BellOff, LogOut, Pin, FileText, Image as ImageIcon, MessageSquare, Folder, ChevronDown, Paperclip, MoreVertical, Trash2, Reply, File, BookOpen, Clock, AlertTriangle, BarChart2, CheckSquare } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,6 +10,7 @@ import ProfilePopover from '../components/ProfilePopover';
 import OptimizedImage from '../components/OptimizedImage';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
 import FormattedText from '../components/FormattedText';
+import LinkPreview from '../components/LinkPreview';
 import TagInput from '../components/TagInput';
 
 const INITIAL_JOINED = [
@@ -108,6 +110,13 @@ function ReportSummary({ id }: { id: string }) {
   );
 }
 
+const sessionCacheMessages: Record<string, {
+  messages: any[];
+  hasMoreMessages: boolean;
+  nextCursor: string | null;
+  scrollTop?: number;
+}> = {};
+
 export default function MessagesTab() {
   const [message, setMessage] = useState('');
   const [messages, setMessages] = useState<any[]>([]);
@@ -134,6 +143,7 @@ export default function MessagesTab() {
   const [activeGroupId, setActiveGroupId] = useState('');
   const [activeGroupMembers, setActiveGroupMembers] = useState<any[]>([]);
   const [joinSearchQuery, setJoinSearchQuery] = useState('');
+  const [userSearchResults, setUserSearchResults] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -152,15 +162,33 @@ export default function MessagesTab() {
   const [allCourses, setAllCourses] = useState<any[]>([]);
 
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useUser();
   const { socket } = useSocket();
   const dragScroll = useDraggableScroll<HTMLDivElement>();
+  const activeGroupIdRef = useRef(activeGroupId);
+
+  const isTransitioningGroup = activeGroupIdRef.current !== activeGroupId;
+  const targetId = searchParams.get('messageId');
+  const displayedMessages = isTransitioningGroup 
+    ? (sessionCacheMessages[activeGroupId]?.messages || (!targetId && messageCache[activeGroupId]) || [])
+    : messages;
+  const displayedLoading = isTransitioningGroup
+    ? displayedMessages.length === 0
+    : isLoadingMessages;
+  const displayedHasMoreMessages = isTransitioningGroup 
+    ? (sessionCacheMessages[activeGroupId]?.hasMoreMessages ?? true) 
+    : hasMoreMessages;
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const unreadCountRef = useRef<number>(0);
+  const isFetchingRef = useRef<Record<string, boolean>>({});
+
+  useEffect(() => {
+    activeGroupIdRef.current = activeGroupId;
+  }, [activeGroupId]);
 
   useEffect(() => {
     fetchGroups();
@@ -171,6 +199,8 @@ export default function MessagesTab() {
       socket.emit('join_group', activeGroupId);
 
       const handleNewMessage = (data: { message: any }) => {
+        if (data.message.groupId !== activeGroupId) return;
+        
         setMessages(prev => {
           if (prev.some(m => m.id === data.message.id)) {
             return prev;
@@ -243,18 +273,73 @@ export default function MessagesTab() {
   }, [searchParams, joinedGroups]);
 
   useEffect(() => {
+    if (activeGroupId && messages.length > 0) {
+      const prevScroll = sessionCacheMessages[activeGroupId]?.scrollTop;
+      sessionCacheMessages[activeGroupId] = {
+        messages,
+        hasMoreMessages,
+        nextCursor,
+        scrollTop: prevScroll
+      };
+    }
+  }, [messages, hasMoreMessages, nextCursor, activeGroupId]);
+
+  React.useLayoutEffect(() => {
     if (activeGroupId) {
-      if (messageCache[activeGroupId] && !searchParams.get('messageId')) {
-        setMessages(messageCache[activeGroupId]);
+      const targetId = searchParams.get('messageId');
+      if (!targetId) {
+        if (sessionCacheMessages[activeGroupId]) {
+          const session = sessionCacheMessages[activeGroupId];
+          if (session.scrollTop !== undefined && messagesContainerRef.current) {
+            messagesContainerRef.current.scrollTop = session.scrollTop;
+          }
+        } else if (messageCache[activeGroupId]) {
+          if (messagesEndRef.current) {
+            messagesEndRef.current.scrollIntoView({ behavior: 'auto' });
+          }
+        }
+      }
+    }
+  }, [activeGroupId, searchParams]);
+
+  useEffect(() => {
+    if (activeGroupId) {
+      const targetId = searchParams.get('messageId');
+
+      if (sessionCacheMessages[activeGroupId] && !targetId) {
+        const session = sessionCacheMessages[activeGroupId];
+        setMessages(session.messages);
+        setHasMoreMessages(session.hasMoreMessages);
+        setNextCursor(session.nextCursor);
+        if (session.messages.length > 0) {
+          lastMessageIdRef.current = session.messages[session.messages.length - 1].id;
+        } else {
+          lastMessageIdRef.current = null;
+        }
+        
+        fetchMessages(activeGroupId, true, null, true);
+      } else if (messageCache[activeGroupId] && !targetId) {
+        const cached = messageCache[activeGroupId];
+        setMessages(cached);
+        if (cached.length > 0) {
+          lastMessageIdRef.current = cached[cached.length - 1].id;
+        } else {
+          lastMessageIdRef.current = null;
+        }
+
+        setHasMoreMessages(true);
+        setNextCursor(null);
+        fetchMessages(activeGroupId, true, null, true);
       } else {
         setMessages([]);
+        lastMessageIdRef.current = null;
+        setHasMoreMessages(true);
+        setNextCursor(null);
+        fetchMessages(activeGroupId, true);
       }
-      setHasMoreMessages(true);
-      setNextCursor(null);
-      fetchMessages(activeGroupId, true);
       fetchGroupMembers(activeGroupId);
     }
-  }, [activeGroupId]);
+  }, [activeGroupId, searchParams.get('messageId')]);
 
   useEffect(() => {
     if (prevScrollHeightRef.current !== null && messagesContainerRef.current) {
@@ -285,13 +370,23 @@ export default function MessagesTab() {
         setActiveGroupMembers(data.members);
       }
     } catch (error) {
-      console.error('Failed to fetch group members', error);
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.warn('Network error fetching group members (server may be restarting).');
+      } else {
+        console.error('Failed to fetch group members', error);
+      }
     }
   };
 
-  const fetchMessages = async (groupId: string, isInitial = false, cursor: string | null = null) => {
-    if (isLoadingMessages) return;
-    setIsLoadingMessages(true);
+  const fetchMessages = async (groupId: string, isInitial = false, cursor: string | null = null, preventAutoScroll = false) => {
+    const fetchKey = `${groupId}-${isInitial}-${cursor || ''}`;
+    if (isFetchingRef.current[fetchKey]) return;
+    isFetchingRef.current[fetchKey] = true;
+    
+    if (activeGroupIdRef.current === groupId) {
+      setIsLoadingMessages(true);
+    }
+    
     try {
       const token = localStorage.getItem('token');
       let url = `/api/groups/${groupId}/messages?limit=100`;
@@ -310,6 +405,9 @@ export default function MessagesTab() {
       if (res.ok) {
         const data = await res.json();
         
+        // Prevent race condition across groups
+        if (activeGroupIdRef.current !== groupId) return;
+
         if (!isInitial && messagesContainerRef.current) {
           prevScrollHeightRef.current = messagesContainerRef.current.scrollHeight;
         }
@@ -326,7 +424,20 @@ export default function MessagesTab() {
         setMessages(prev => {
           let newMessages;
           if (isInitial) {
-            newMessages = data.messages;
+            if (prev.length > 0 && !msgId) {
+               const existingIds = new Set(prev.map(m => m.id));
+               const hasOverlap = data.messages.some((m: any) => existingIds.has(m.id));
+               
+               if (hasOverlap) {
+                 const prevMap = new Map(prev.map(m => [m.id, m]));
+                 data.messages.forEach((m: any) => prevMap.set(m.id, m));
+                 newMessages = Array.from(prevMap.values()).sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+               } else {
+                 newMessages = data.messages;
+               }
+            } else {
+               newMessages = data.messages;
+            }
           } else {
             newMessages = [...data.messages, ...prev];
           }
@@ -350,16 +461,23 @@ export default function MessagesTab() {
         setNextCursor(data.nextCursorOlder || data.nextCursor);
         setHasMoreMessages(data.hasMoreOlder !== undefined ? data.hasMoreOlder : data.hasMore);
         
-        if (isInitial && !searchParams.get('messageId')) {
+        if (isInitial && !searchParams.get('messageId') && !preventAutoScroll) {
           setTimeout(() => {
               messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
           }, 100);
         }
       }
     } catch (error) {
-      console.error('Failed to fetch messages', error);
+      if (error instanceof TypeError && error.message === 'Failed to fetch') {
+        console.warn('Network error fetching messages (server may be restarting).');
+      } else {
+        console.error('Failed to fetch messages', error);
+      }
     } finally {
-      setIsLoadingMessages(false);
+      delete isFetchingRef.current[fetchKey];
+      if (activeGroupIdRef.current === groupId) {
+        setIsLoadingMessages(false);
+      }
     }
   };
 
@@ -429,11 +547,11 @@ export default function MessagesTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        alert(err.error || 'Failed to pin message');
+        toast(err.error || 'Failed to pin message');
       }
     } catch (error) {
       console.error(error);
-      alert('Failed to pin message');
+      toast('Failed to pin message');
     }
   };
 
@@ -468,14 +586,57 @@ export default function MessagesTab() {
   };
 
   useEffect(() => {
-    const displayed = joinedGroups.filter(g => g.isDirectMessage);
-    if (displayed.length > 0 && !displayed.some(g => g.id === activeGroupId)) {
+    const displayed = joinedGroups.filter((g: any) => g.isDirectMessage);
+    const groupIdFromUrl = searchParams.get('id');
+    
+    // If the URL specifies a group ID, always respect it (it might be loading)
+    if (groupIdFromUrl) {
+      if (activeGroupId !== groupIdFromUrl) {
+        setActiveGroupId(groupIdFromUrl);
+      }
+      return;
+    }
+
+    if (displayed.length > 0 && !displayed.some((g: any) => g.id === activeGroupId)) {
       setActiveGroupId(displayed[0].id);
     }
-  }, [joinedGroups]);
+  }, [joinedGroups, activeGroupId, searchParams]);
 
   const displayedGroups = joinedGroups.filter(g => g.isDirectMessage);
   const activeGroup = joinedGroups.find(g => g.id === activeGroupId) || displayedGroups[0] || null;
+
+  const handleGroupClick = (groupId: string) => {
+    if (activeGroupId === groupId) return;
+    
+    // Save scroll of current group
+    if (activeGroupId && sessionCacheMessages[activeGroupId] && messagesContainerRef.current) {
+      sessionCacheMessages[activeGroupId].scrollTop = messagesContainerRef.current.scrollTop;
+    }
+    
+    React.startTransition(() => {
+      // Fast switch state
+      if (sessionCacheMessages[groupId]) {
+        const session = sessionCacheMessages[groupId];
+        setMessages(session.messages);
+        setHasMoreMessages(session.hasMoreMessages);
+        setNextCursor(session.nextCursor);
+        lastMessageIdRef.current = session.messages.length > 0 ? session.messages[session.messages.length - 1].id : null;
+      } else if (messageCache[groupId]) {
+        const cached = messageCache[groupId];
+        setMessages(cached);
+        lastMessageIdRef.current = cached.length > 0 ? cached[cached.length - 1].id : null;
+        setHasMoreMessages(true);
+        setNextCursor(null);
+      } else {
+        setMessages([]);
+        lastMessageIdRef.current = null;
+        setHasMoreMessages(true);
+        setNextCursor(null);
+      }
+      setActiveGroupId(groupId);
+      setSearchParams({ id: groupId });
+    });
+  };
 
   const getOtherMember = (group: any) => {
     if (!group || !group.members) return null;
@@ -492,12 +653,15 @@ export default function MessagesTab() {
     return other?.avatarUrl || `https://picsum.photos/seed/${other?.id || group.id}/100/100`;
   };
 
+  const isNearBottomRef = useRef(true);
+
   const handleScroll = () => {
     if (!messagesContainerRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
     
     // Show button if we are more than 100px away from the bottom
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 150;
+    isNearBottomRef.current = isNearBottom;
     setShowScrollButton(!isNearBottom);
     
     if (activeMessageOptions) {
@@ -510,8 +674,8 @@ export default function MessagesTab() {
     }
   };
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    messagesEndRef.current?.scrollIntoView({ behavior });
   };
 
   // Auto-resize textarea
@@ -535,17 +699,16 @@ export default function MessagesTab() {
     // If the last message didn't change (e.g. we just loaded history), do not auto-scroll
     if (prevLastId === lastMsg.id) return;
     
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current;
-    
     // Determine if we should auto-scroll
-    // 1. If we're already at the bottom (within 150px)
-    const wasAtBottom = scrollHeight - scrollTop - clientHeight < 150;
+    // 1. If we're already at the bottom BEFORE DOM update
+    const wasAtBottom = isNearBottomRef.current;
     
     // 2. If the last message is from the current user
     const isMe = lastMsg && (lastMsg.authorId === user?.id || lastMsg.isMe || lastMsg.isPending === true);
 
     if (wasAtBottom || isMe) {
-      scrollToBottom();
+      scrollToBottom('auto');
+      setTimeout(() => scrollToBottom('auto'), 50); // Ensure layout is complete
     }
   }, [messages, user?.id]);
 
@@ -613,7 +776,7 @@ export default function MessagesTab() {
     if (!activeGroupId) return;
 
     if (editingMessage) {
-       const contentToSend = message;
+       const contentToSend = message.trim();
        const messageId = editingMessage.id;
        setEditingMessage(null);
        setMessage('');
@@ -636,17 +799,17 @@ export default function MessagesTab() {
          } else {
            const err = await res.json();
            console.error('Failed to edit message:', err);
-           alert(err.error || 'Failed to edit message');
+           toast(err.error || 'Failed to edit message');
          }
        } catch (err) {
          console.error(err);
-         alert('Failed to edit message');
+         toast('Failed to edit message');
        }
        return;
     }
     
     const tempId = 'temp-' + Date.now();
-    const contentToSend = message;
+    const contentToSend = message.trim();
     const replyToIdToSend = replyingTo?.id;
     const attachmentToSend = attachment;
 
@@ -671,11 +834,15 @@ export default function MessagesTab() {
     };
 
     setMessages(prev => [...prev, tempMessage]);
+    setTimeout(() => scrollToBottom('auto'), 50);
     setMessage('');
     if (textareaRef.current) textareaRef.current.style.height = 'auto';
     setReplyingTo(null);
     setAttachment(null);
     
+    // Simulated network delay for UX
+    await new Promise(r => setTimeout(r, 800));
+
     try {
       const token = localStorage.getItem('token');
       const formData = new FormData();
@@ -773,6 +940,240 @@ export default function MessagesTab() {
     return matchesSearch && matchesCategory;
   });
 
+  const renderedMessages = useMemo(() => {
+    return displayedMessages.filter((m: any) => !m.deletedForMe).map((msg: any, index: number, arr: any[]) => {
+                const prevMsg = index > 0 ? arr[index - 1] : null;
+                const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
+
+                const isDeleted = msg.deletedForAll;
+                const repliedMsg = msg.replyToId ? displayedMessages.find((m: any) => m.id === msg.replyToId) : null;
+                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || msg.author?.id === user?.id || msg.author?.username === user?.username || msg.author?.name === 'Me');
+                
+                const prevIsMe = prevMsg ? (prevMsg.isMe !== undefined ? prevMsg.isMe : (prevMsg.authorId === user?.id || prevMsg.author?.id === user?.id || prevMsg.author?.username === user?.username || prevMsg.author?.name === 'Me')) : false;
+                const nextIsMe = nextMsg ? (nextMsg.isMe !== undefined ? nextMsg.isMe : (nextMsg.authorId === user?.id || nextMsg.author?.id === user?.id || nextMsg.author?.username === user?.username || nextMsg.author?.name === 'Me')) : false;
+
+                const getTimeString = (m: any) => new Date(m.createdAt || m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const msgTimeString = getTimeString(msg);
+                const prevTimeString = prevMsg ? getTimeString(prevMsg) : null;
+                const nextTimeString = nextMsg ? getTimeString(nextMsg) : null;
+
+                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute)
+                const isSameSenderAsPrev = prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
+                const isSameSenderAsNext = nextMsg && ((isMe && nextIsMe) || (!isMe && !nextIsMe && (msg.authorId === nextMsg.authorId || msg.sender === nextMsg.sender))) && (msgTimeString === nextTimeString);
+
+                const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
+
+                return (
+                  <React.Fragment key={msg.id}>
+                    <motion.div 
+                      id={`msg-container-${msg.id}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    key={msg.id} 
+                    className={clsx(
+                      "flex flex-col group/message w-full", 
+                      isMe ? "items-end" : "items-start",
+                      isSameSenderAsPrev ? "mt-0.5" : "mt-3"
+                    )}
+                  >
+                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
+                      {!isMe && (
+                        <div className="w-8 flex-shrink-0">
+                          {!isSameSenderAsNext && (
+                            <ProfilePopover
+                              username={msg.author?.username || senderName.toLowerCase().replace(/\s+/g, '')}
+                              user={{
+                                name: senderName,
+                                handle: msg.author?.username || senderName.toLowerCase().replace(/\s+/g, ''),
+                                bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
+                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
+                              }}
+                            >
+                              <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
+                                <OptimizedImage 
+                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
+                                  alt={senderName} 
+                                  className="w-full h-full object-cover" 
+                                  variant="small"
+                                />
+                              </div>
+                            </ProfilePopover>
+                          )}
+                        </div>
+                      )}
+                      
+                      <div className="flex flex-col gap-1 relative">
+                        {/* Options Menu */}
+                        <div className={clsx(
+                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
+                          isMe ? "right-full mr-2" : "left-full ml-2"
+                        )}>
+                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
+                            <button 
+                              onClick={() => setReplyingTo(msg)}
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
+                              title="Reply"
+                            >
+                              <Reply className="w-4 h-4" />
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                setActiveMessageOptions(activeMessageOptions?.id === msg.id ? null : {
+                                  id: msg.id,
+                                  rect,
+                                  isMe,
+                                  isDeleted,
+                                  msg
+                                });
+                              }}
+                              title="More Options"
+                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {(() => {
+                          const contentStr = msg.content || msg.text || '';
+                          const urls = contentStr.match(/https?:\/\/[^\s)\]'"]+/g) || [];
+                          const textWithoutUrls = contentStr.replace(/https?:\/\/[^\s)\]'"]+/g, '').trim();
+                          let isOnlyUrls = urls.length > 0 && textWithoutUrls.length === 0 && !msg.attachmentUrl && !isDeleted;
+                          if (contentStr.startsWith('[REPORT_SUMMARY:')) isOnlyUrls = false;
+                          
+                          return (
+                            <>
+                        <div id={`msg-${msg.id}`} className={clsx(
+                          "text-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
+                          isOnlyUrls ? "" : "px-3 py-2 shadow-sm",
+                          isOnlyUrls ? "" : (isMe 
+                            ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
+                            : "bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 text-neutral-200 shadow-[0_2px_10px_rgba(0,0,0,0.2)]"),
+                          isOnlyUrls ? "" : (isMe
+                            ? clsx(
+                                "rounded-l-2xl",
+                                isSameSenderAsPrev ? "rounded-tr-md" : "rounded-tr-2xl",
+                                isSameSenderAsNext ? "rounded-br-md" : "rounded-br-2xl"
+                              )
+                            : clsx(
+                                "rounded-r-2xl",
+                                isSameSenderAsPrev ? "rounded-tl-md" : "rounded-tl-2xl",
+                                isSameSenderAsNext ? "rounded-bl-md" : "rounded-bl-2xl"
+                              )),
+                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800 shadow-none px-3 py-2"
+                        )}>
+                          {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
+                          
+                          {repliedMsg && !isDeleted && (
+                            <div 
+                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
+                              onClick={() => {
+                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
+                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
+                                 if (el) {
+                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
+                                    if (container) container.classList.add('z-50', 'relative');
+                                    setTimeout(() => {
+                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
+                                       if (container) container.classList.remove('z-50', 'relative');
+                                    }, 1500);
+                                 }
+                              }}
+                            >
+                              <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
+                              <div className="truncate opacity-80">{repliedMsg.content}</div>
+                            </div>
+                          )}
+
+                          {msg.attachmentUrl && !isDeleted && (
+                            <div className={clsx("mb-1 rounded-xl overflow-hidden", msg.attachmentType?.startsWith('image/') ? "bg-black/20" : "bg-black/10")}>
+                              {msg.attachmentType?.startsWith('image/') ? (
+                                <img referrerPolicy="no-referrer" src={msg.attachmentUrl} alt="attachment" className="max-w-full max-h-64 object-cover" />
+                              ) : (
+                                <a 
+                                  href={`/api/download?url=${encodeURIComponent(msg.attachmentUrl)}&filename=${encodeURIComponent(msg.attachmentName || 'file')}`}
+                                  target="_blank" 
+                                  rel="noopener noreferrer" 
+                                  download={msg.attachmentName}
+                                  className="flex items-center gap-3 p-3 hover:bg-black/20 transition-colors"
+                                >
+                                  <div className={clsx("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", isMe ? "bg-white/20" : "bg-primary-500/20")}>
+                                    <FileText className={clsx("w-5 h-5", isMe ? "text-white" : "text-primary-300")} />
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-sm truncate">{msg.attachmentName}</div>
+                                    <div className="text-[11px] opacity-70 mt-0.5 uppercase">
+                                      {msg.attachmentSize ? (msg.attachmentSize / 1024).toFixed(1) + ' KB' : 'FILE'} • {msg.attachmentName?.split('.').pop() || 'UNKNOWN'}
+                                    </div>
+                                  </div>
+                                </a>
+                              )}
+                            </div>
+                          )}
+
+                          {isOnlyUrls && (
+                            <div className="flex flex-col gap-2 mb-1 w-full relative min-w-0">
+                               {Array.from(new Set(urls)).map((url: string) => (
+                                  <LinkPreview key={url} url={url} />
+                               ))}
+                            </div>
+                          )}
+
+                          <div className={clsx("flex items-end gap-3", (!isOnlyUrls && (msg.content?.trim() || msg.text?.trim())) ? "justify-between mt-1" : "justify-end")}>
+                            {!isOnlyUrls && (msg.content?.trim() || msg.text?.trim()) ? (
+                              <div className="flex-1 min-w-0">
+                                {msg.content?.startsWith('[REPORT_SUMMARY:') ? (
+                                  <ReportSummary id={msg.content.match(/\[REPORT_SUMMARY:(.+)\]/)?.[1] || ''} />
+                                ) : (
+                                  <FormattedText text={msg.content || msg.text} hidePreviews={true} />
+                                )}
+                              </div>
+                            ) : null}
+                            <div className={clsx(
+                              "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
+                              !(!isOnlyUrls && (msg.content?.trim() || msg.text?.trim())) && "ml-auto",
+                              isOnlyUrls ? "text-neutral-500" : (isMe ? "text-primary-200" : "text-neutral-500")
+                            )}>
+                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
+                              {msgTimeString}
+                              {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
+                              {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Render Link Previews Outside Bubble */}
+                        {!isOnlyUrls && (() => {
+                          const uniqueUrls = Array.from(new Set(urls));
+                          if (uniqueUrls.length === 0 || msg.deletedForAll || msg.deletedForMe) return null;
+                          return (
+                            <div className={clsx("flex flex-col gap-2 mt-1 w-full", isMe ? "items-end" : "items-start")}>
+                              {uniqueUrls.map((url: string) => (
+                                <LinkPreview key={url} url={url} />
+                              ))}
+                            </div>
+                          );
+                        })()}
+                        </>
+                        )})()}
+
+                      </div>
+                    </div>
+                  </motion.div>
+                  </React.Fragment>
+                );
+              });
+  }, [
+    displayedMessages,
+    user?.id,
+    user?.username,
+    activeMessageOptions?.id,
+    replyingTo?.id // Re-render when replies or options change
+  ]);
+
   return (
     <motion.div 
       initial={{ opacity: 0 }}
@@ -805,7 +1206,7 @@ export default function MessagesTab() {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.05 }}
               key={group.id}
-              onClick={() => setActiveGroupId(group.id)}
+              onClick={() => handleGroupClick(group.id)}
               className={clsx(
                 "w-full text-left p-4 border-b border-neutral-800/50 hover:bg-neutral-800 transition-colors flex items-center justify-between",
                 group.id === activeGroupId && "bg-neutral-800/80 border-l-2 border-l-primary-500"
@@ -926,7 +1327,7 @@ export default function MessagesTab() {
               className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-6 relative bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-repeat"
               style={{ backgroundBlendMode: 'overlay', backgroundColor: 'rgba(10, 10, 10, 0.98)' }}
             >
-              {isLoadingMessages && hasMoreMessages && messages.length > 0 && (
+              {displayedLoading && displayedHasMoreMessages && displayedMessages.length > 0 && (
                 <div className="text-center py-4">
                   <div className="inline-block w-6 h-6 border-2 border-primary-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
@@ -937,7 +1338,7 @@ export default function MessagesTab() {
                 </div>
               </div>
 
-              {messages.length === 0 && isLoadingMessages && (
+              {displayedMessages.length === 0 && displayedLoading && (
                 <div className="flex flex-col gap-6 py-4">
                   {[...Array(6)].map((_, i) => (
                     <div key={i} className={clsx("flex gap-3", i % 2 === 0 ? "flex-row" : "flex-row-reverse")}>
@@ -954,194 +1355,7 @@ export default function MessagesTab() {
                 </div>
               )}
 
-              {messages.filter(m => !m.deletedForMe).map((msg, index, arr) => {
-                const prevMsg = index > 0 ? arr[index - 1] : null;
-                const nextMsg = index < arr.length - 1 ? arr[index + 1] : null;
-
-                const isDeleted = msg.deletedForAll;
-                const repliedMsg = msg.replyToId ? messages.find(m => m.id === msg.replyToId) : null;
-                const isMe = msg.isMe !== undefined ? msg.isMe : (msg.authorId === user?.id || msg.author?.id === user?.id || msg.author?.username === user?.username || msg.author?.name === 'Me');
-                
-                const prevIsMe = prevMsg ? (prevMsg.isMe !== undefined ? prevMsg.isMe : (prevMsg.authorId === user?.id || prevMsg.author?.id === user?.id || prevMsg.author?.username === user?.username || prevMsg.author?.name === 'Me')) : false;
-                const nextIsMe = nextMsg ? (nextMsg.isMe !== undefined ? nextMsg.isMe : (nextMsg.authorId === user?.id || nextMsg.author?.id === user?.id || nextMsg.author?.username === user?.username || nextMsg.author?.name === 'Me')) : false;
-
-                const getTimeString = (m: any) => new Date(m.createdAt || m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                const msgTimeString = getTimeString(msg);
-                const prevTimeString = prevMsg ? getTimeString(prevMsg) : null;
-                const nextTimeString = nextMsg ? getTimeString(nextMsg) : null;
-
-                // A message is from the same sender if both are 'isMe', or if they have the same authorId/sender string AND they were sent at the same time (same minute)
-                const isSameSenderAsPrev = prevMsg && ((isMe && prevIsMe) || (!isMe && !prevIsMe && (msg.authorId === prevMsg.authorId || msg.sender === prevMsg.sender))) && (msgTimeString === prevTimeString);
-                const isSameSenderAsNext = nextMsg && ((isMe && nextIsMe) || (!isMe && !nextIsMe && (msg.authorId === nextMsg.authorId || msg.sender === nextMsg.sender))) && (msgTimeString === nextTimeString);
-
-                const senderName = msg.author?.name || msg.author?.username || msg.sender || 'Unknown User';
-
-                return (
-                  <React.Fragment key={msg.id}>
-                    <motion.div 
-                      id={`msg-container-${msg.id}`}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.05 }}
-                    key={msg.id} 
-                    className={clsx(
-                      "flex flex-col group/message w-full", 
-                      isMe ? "items-end" : "items-start",
-                      isSameSenderAsPrev ? "mt-0.5" : "mt-3"
-                    )}
-                  >
-                    <div className={clsx("flex items-end gap-2 max-w-[85%] sm:max-w-[75%] md:max-w-xl", isMe ? "flex-row-reverse" : "flex-row")}>
-                      {!isMe && (
-                        <div className="w-8 flex-shrink-0">
-                          {!isSameSenderAsNext && (
-                            <ProfilePopover
-                              username={msg.author?.username || senderName.toLowerCase()}
-                              user={{
-                                name: senderName,
-                                handle: msg.author?.username || senderName.toLowerCase(),
-                                bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
-                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
-                              }}
-                            >
-                              <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
-                                <OptimizedImage 
-                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
-                                  alt={senderName} 
-                                  className="w-full h-full object-cover" 
-                                  variant="small"
-                                />
-                              </div>
-                            </ProfilePopover>
-                          )}
-                        </div>
-                      )}
-                      
-                      <div className="flex flex-col gap-1 relative">
-                        {/* Options Menu */}
-                        <div className={clsx(
-                          "absolute top-1/2 -translate-y-1/2 opacity-0 group-hover/message:opacity-100 transition-opacity flex items-center gap-1 z-20",
-                          isMe ? "right-full mr-2" : "left-full ml-2"
-                        )}>
-                          <div className="flex bg-neutral-900 border border-neutral-800 rounded-full shadow-lg overflow-hidden py-0.5 px-0.5">
-                            <button 
-                              onClick={() => setReplyingTo(msg)}
-                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors flex items-center justify-center"
-                              title="Reply"
-                            >
-                              <Reply className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                setActiveMessageOptions(activeMessageOptions?.id === msg.id ? null : {
-                                  id: msg.id,
-                                  rect,
-                                  isMe,
-                                  isDeleted,
-                                  msg
-                                });
-                              }}
-                              title="More Options"
-                              className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-full transition-colors"
-                            >
-                              <MoreVertical className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-
-                        <div id={`msg-${msg.id}`} className={clsx(
-                          "px-3 py-2 text-sm shadow-sm min-w-0 break-words whitespace-pre-wrap relative flex flex-col",
-                          isMe 
-                            ? "bg-primary-600 text-white shadow-[0_2px_10px_rgba(99,102,241,0.2)]" 
-                            : "bg-neutral-800/80 backdrop-blur-sm border border-neutral-700/50 text-neutral-200 shadow-[0_2px_10px_rgba(0,0,0,0.2)]",
-                          isMe
-                            ? clsx(
-                                "rounded-l-2xl",
-                                isSameSenderAsPrev ? "rounded-tr-md" : "rounded-tr-2xl",
-                                isSameSenderAsNext ? "rounded-br-md" : "rounded-br-2xl"
-                              )
-                            : clsx(
-                                "rounded-r-2xl",
-                                isSameSenderAsPrev ? "rounded-tl-md" : "rounded-tl-2xl",
-                                isSameSenderAsNext ? "rounded-bl-md" : "rounded-bl-2xl"
-                              ),
-                          isDeleted && "italic text-neutral-400 bg-neutral-900 border border-neutral-800 shadow-none"
-                        )}>
-                          {!isMe && !isDeleted && !isSameSenderAsPrev && <div className="text-[11px] text-primary-400 mb-1 font-semibold">{senderName}</div>}
-                          
-                          {repliedMsg && !isDeleted && (
-                            <div 
-                              className="mb-2 p-2 rounded-lg bg-black/20 border-l-2 border-primary-400 text-xs cursor-pointer hover:bg-black/30 transition-colors"
-                              onClick={() => {
-                                 const el = document.getElementById(`msg-${repliedMsg.id}`);
-                                 const container = document.getElementById(`msg-container-${repliedMsg.id}`);
-                                 if (el) {
-                                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    el.classList.add('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'transition-all', 'z-50');
-                                    if (container) container.classList.add('z-50', 'relative');
-                                    setTimeout(() => {
-                                       el.classList.remove('ring-2', 'ring-primary-500', 'ring-offset-2', 'ring-offset-neutral-900', 'z-50');
-                                       if (container) container.classList.remove('z-50', 'relative');
-                                    }, 1500);
-                                 }
-                              }}
-                            >
-                              <div className="font-semibold text-primary-300 mb-0.5">{repliedMsg.author?.name || 'Unknown'}</div>
-                              <div className="truncate opacity-80">{repliedMsg.content}</div>
-                            </div>
-                          )}
-
-                          {msg.attachmentUrl && !isDeleted && (
-                            <div className={clsx("mb-1 rounded-xl overflow-hidden", msg.attachmentType?.startsWith('image/') ? "bg-black/20" : "bg-black/10")}>
-                              {msg.attachmentType?.startsWith('image/') ? (
-                                <img src={msg.attachmentUrl} alt="attachment" className="max-w-full max-h-64 object-cover" />
-                              ) : (
-                                <a 
-                                  href={`/api/download?url=${encodeURIComponent(msg.attachmentUrl)}&filename=${encodeURIComponent(msg.attachmentName || 'file')}`}
-                                  target="_blank" 
-                                  rel="noopener noreferrer" 
-                                  download={msg.attachmentName}
-                                  className="flex items-center gap-3 p-3 hover:bg-black/20 transition-colors"
-                                >
-                                  <div className={clsx("w-10 h-10 rounded-lg flex items-center justify-center shrink-0", isMe ? "bg-white/20" : "bg-primary-500/20")}>
-                                    <FileText className={clsx("w-5 h-5", isMe ? "text-white" : "text-primary-300")} />
-                                  </div>
-                                  <div className="flex-1 min-w-0">
-                                    <div className="font-medium text-sm truncate">{msg.attachmentName}</div>
-                                    <div className="text-[11px] opacity-70 mt-0.5 uppercase">
-                                      {msg.attachmentSize ? (msg.attachmentSize / 1024).toFixed(1) + ' KB' : 'FILE'} • {msg.attachmentName?.split('.').pop() || 'UNKNOWN'}
-                                    </div>
-                                  </div>
-                                </a>
-                              )}
-                            </div>
-                          )}
-
-                          <div className="flex items-end justify-between gap-3">
-                            <div className="flex-1 min-w-0">
-                              {msg.content?.startsWith('[REPORT_SUMMARY:') ? (
-                                <ReportSummary id={msg.content.match(/\[REPORT_SUMMARY:(.+)\]/)?.[1] || ''} />
-                              ) : (
-                                <FormattedText text={msg.content || msg.text} />
-                              )}
-                            </div>
-                            <div className={clsx(
-                              "text-[10px] shrink-0 mb-[-2px] flex items-center gap-1", 
-                              isMe ? "text-primary-200" : "text-neutral-500"
-                            )}>
-                              {msg.isEdited && <span className="opacity-70 mr-1 italic">(Edited)</span>}
-                              {msgTimeString}
-                              {msg.isPending && <Clock className="w-3 h-3 opacity-70" />}
-                              {msg.isFailed && <X className="w-3 h-3 text-red-400" />}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                  </React.Fragment>
-                );
-              })}
+                            {renderedMessages}
               <div ref={messagesEndRef} />
             </div>
 
@@ -1155,7 +1369,7 @@ export default function MessagesTab() {
                   className="absolute bottom-24 right-6 z-10"
                 >
                   <button
-                    onClick={scrollToBottom}
+                    onClick={() => scrollToBottom('smooth')}
                     className="w-10 h-10 bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded-full shadow-lg flex items-center justify-center text-neutral-300 hover:text-white transition-colors"
                   >
                     <ChevronDown className="w-5 h-5" />
@@ -1226,7 +1440,7 @@ export default function MessagesTab() {
                       <div className="flex items-center gap-3 overflow-hidden">
                         <div className="w-10 h-10 rounded-lg bg-neutral-700 flex items-center justify-center overflow-hidden shrink-0">
                           {attachment.type.startsWith('image/') ? (
-                            <img src={URL.createObjectURL(attachment)} alt="preview" className="w-full h-full object-cover" />
+                            <img referrerPolicy="no-referrer" src={URL.createObjectURL(attachment)} alt="preview" className="w-full h-full object-cover" />
                           ) : (
                             <File className="w-5 h-5 text-neutral-400" />
                           )}
@@ -1506,7 +1720,7 @@ export default function MessagesTab() {
                 <div className="bg-neutral-800/50 rounded-xl p-4 border border-neutral-800">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block mb-2">Message to report</span>
                   <div className="flex items-center gap-3 mb-2">
-                    <img 
+                    <img referrerPolicy="no-referrer" 
                       src={reportingMessage.author?.avatarUrl || `https://picsum.photos/seed/${reportingMessage.authorId}/50/50`} 
                       className="w-6 h-6 rounded-full object-cover" 
                       alt=""
@@ -1574,7 +1788,7 @@ export default function MessagesTab() {
                       if (res.ok) {
                         setReportingMessage(null);
                         setReportReason('');
-                        alert('Your report has been submitted. Thank you for helping keep our community safe.');
+                        toast('Your report has been submitted. Thank you for helping keep our community safe.');
                       } else {
                         const errorText = await res.text();
                         let errorMessage = 'Failed to submit report. Please try again.';
@@ -1584,16 +1798,16 @@ export default function MessagesTab() {
                         } catch (e) {
                            console.error("Non-JSON error response:", errorText);
                         }
-                        alert(errorMessage);
+                        toast(errorMessage);
                       }
                     } catch (error) {
                       console.error('Report error:', error);
-                      alert('An error occurred while submitting your report.');
+                      toast('An error occurred while submitting your report.');
                     } finally {
                       setIsSubmittingReport(false);
                     }
                   }}
-                  className="flex-2 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg hover:shadow-primary-500/20 disabled:opacity-50 disabled:bg-neutral-800 flex items-center justify-center gap-2 px-8"
+                  className="flex-2 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm transition-colors disabled:opacity-50 disabled:bg-neutral-800 flex items-center justify-center gap-2 px-8"
                 >
                   {isSubmittingReport ? (
                     <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
@@ -1607,7 +1821,7 @@ export default function MessagesTab() {
         )}
       </AnimatePresence>
 
-      {/* Join Group Modal */}
+      {/* Start DM Modal */}
       <AnimatePresence>
         {showJoinModal && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
@@ -1625,70 +1839,68 @@ export default function MessagesTab() {
               className="relative w-full max-w-md bg-neutral-900 border border-neutral-800 rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]"
             >
               <div className="p-4 border-b border-neutral-800 flex justify-between items-center bg-neutral-900">
-                <h3 className="font-bold text-lg text-white">Join Courses</h3>
+                <h3 className="font-bold text-lg text-white">Start a Conversation</h3>
                 <button onClick={() => setShowJoinModal(false)} className="text-neutral-400 hover:text-white bg-neutral-800 rounded-full p-1">
                   <X className="w-5 h-5" />
                 </button>
               </div>
-              <div className="p-4 border-b border-neutral-800 space-y-3">
+              <div className="p-4 border-b border-neutral-800">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500" />
                   <input 
                     type="text" 
-                    placeholder="Search courses by name or code..." 
+                    placeholder="Search users by name or @username..." 
                     className="w-full bg-neutral-950 border border-neutral-800 rounded-md py-2 pl-9 pr-4 text-sm focus:outline-none focus:border-primary-500 text-neutral-200 transition-colors"
                     value={joinSearchQuery}
-                    onChange={(e) => setJoinSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setJoinSearchQuery(e.target.value);
+                      const q = e.target.value;
+                      if (!q) {
+                        setUserSearchResults([]);
+                        return;
+                      }
+                      fetch(`/api/users/search?q=${encodeURIComponent(q)}`, {
+                        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                      })
+                      .then(r => r.json())
+                      .then(d => {
+                        if (d.users) setUserSearchResults(d.users);
+                      })
+                      .catch(err => console.error('Failed to search users', err));
+                    }}
                   />
-                </div>
-                <div 
-                  {...dragScroll}
-                  className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide select-none"
-                >
-                  {categories.map(category => (
-                    <button
-                      key={category}
-                      onClick={() => setSelectedCategory(category)}
-                      className={clsx(
-                        "px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border",
-                        selectedCategory === category 
-                          ? "bg-primary-600 border-primary-500 text-white" 
-                          : "bg-neutral-900 border-neutral-700 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200"
-                      )}
-                    >
-                      {category}
-                    </button>
-                  ))}
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
-                {filteredAvailableCourses.length === 0 ? (
-                  <div className="text-center text-neutral-500 py-8">No courses found matching your search.</div>
+                {!joinSearchQuery ? (
+                  <div className="text-center text-neutral-500 py-8">Type a name to search.</div>
+                ) : userSearchResults.length === 0 ? (
+                  <div className="text-center text-neutral-500 py-8">No users found.</div>
                 ) : (
-                  filteredAvailableCourses.map((course, index) => (
+                  userSearchResults.map((searchUser: any, index) => (
                     <motion.div 
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      key={course.id} 
+                      key={searchUser.id} 
                       className="p-3 hover:bg-neutral-800/50 rounded-lg flex items-center justify-between group transition-colors"
                     >
-                      <div>
-                        <div className="font-bold text-neutral-200">{course.code}</div>
-                        <div className="text-xs text-neutral-500">{course.name}</div>
-                        <div className="flex items-center gap-3 mt-1">
-                          {course.tags && course.tags.split(',').map((tag: string, i: number) => (
-                            <div key={i} className="text-[10px] font-medium text-primary-400 bg-primary-500/10 px-2 py-0.5 rounded-full">
-                              {tag.trim()}
-                            </div>
-                          ))}
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-neutral-800 border border-neutral-700 overflow-hidden">
+                          <img src={searchUser.avatarUrl || `https://picsum.photos/seed/${searchUser.id}/100/100`} alt={searchUser.username} className="w-full h-full object-cover" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-neutral-200">{searchUser.name || searchUser.username}</div>
+                          <div className="text-xs text-neutral-500">@{searchUser.username}</div>
                         </div>
                       </div>
                       <button 
-                        onClick={() => handleEnrollCourse(course.id)}
-                        className="bg-neutral-800 hover:bg-primary-600 text-white text-sm font-medium px-4 py-1.5 rounded-full transition-colors border border-neutral-700 hover:border-primary-500"
+                        onClick={() => {
+                          handleStartDM(searchUser.id);
+                          setShowJoinModal(false);
+                          setJoinSearchQuery('');
+                          setUserSearchResults([]);
+                        }}
+                        className="bg-primary-600/10 hover:bg-primary-600 text-primary-400 hover:text-white text-sm font-medium px-4 py-1.5 rounded-full transition-colors border border-primary-500/20"
                       >
-                        Join
+                        Message
                       </button>
                     </motion.div>
                   ))

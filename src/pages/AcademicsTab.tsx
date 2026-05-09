@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { FileText, Upload, Download, FileArchive, Search, Folder, MoreVertical, File, Plus, ChevronRight, ShieldAlert, FolderPlus, BookOpen, X, Users, FileVideo, FileImage, FileAudio, FileSpreadsheet, Presentation, CheckCircle2 } from 'lucide-react';
+import { toast } from 'sonner';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { FileText, Upload, Download, FileArchive, Search, Folder, MoreVertical, File, Plus, ChevronRight, ShieldAlert, FolderPlus, BookOpen, X, Users, FileVideo, FileImage, FileAudio, FileSpreadsheet, Presentation, CheckCircle2, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { motion, AnimatePresence } from 'motion/react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
@@ -15,7 +16,7 @@ const PreviewImage = ({ src, alt, ext, getFileIcon }: { src: string, alt: string
   const [loaded, setLoaded] = useState(false);
   return (
     <div className="relative w-full h-full flex items-center justify-center">
-      <img
+      <img 
         src={src}
         alt={alt}
         className={clsx(
@@ -274,16 +275,29 @@ const formatBytes = (bytes: number, decimals = 2) => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 };
 
+import EditCourseModal from './admin/EditCourseModal';
+import CourseDetailsModal from '../components/CourseDetailsModal';
+
 export default function AcademicsTab() {
   const [search, setSearch] = useState('');
   const [searchParams, setSearchParams] = useSearchParams();
   const fileIdParam = searchParams.get('fileId');
   const [activeCourseId, setActiveCourseIdState] = useState(searchParams.get('courseId') || '');
+  const [showEditCourseModal, setShowEditCourseModal] = useState(false);
+  const [showCourseInfoModal, setShowCourseInfoModal] = useState(false);
+  const isMountedRef = useRef(true);
   
+  useEffect(() => {
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const parsedFolderId = searchParams.get('folderId');
   const [currentFolderId, setCurrentFolderIdState] = useState<string | null>(parsedFolderId === 'null' ? null : parsedFolderId);
 
   const setActiveCourseId = (id: string) => {
+    if (!isMountedRef.current) return;
     setActiveCourseIdState(id);
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
@@ -294,6 +308,7 @@ export default function AcademicsTab() {
   };
 
   const setCurrentFolderId = (id: string | null) => {
+    if (!isMountedRef.current) return;
     setCurrentFolderIdState(id);
     setSearchParams(prev => {
       const p = new URLSearchParams(prev);
@@ -350,6 +365,7 @@ export default function AcademicsTab() {
       })
       .then(res => res.json())
       .then(data => {
+        if (!isMountedRef.current) return;
         if (data.file) {
           setActiveCourseIdState(data.file.courseId);
           setCurrentFolderIdState(data.file.folderId || null);
@@ -382,8 +398,8 @@ export default function AcademicsTab() {
       // Load from cache first
       const cachedFiles = getFromCache(`${CACHE_KEYS.FILES}_${activeCourseId}`);
       const cachedFolders = getFromCache(`${CACHE_KEYS.FILES}_folders_${activeCourseId}`);
-      if (cachedFiles) setCourseFiles(cachedFiles);
-      if (cachedFolders) setCourseFolders(cachedFolders);
+      setCourseFiles(cachedFiles || []);
+      setCourseFolders(cachedFolders || []);
 
       fetchCourseFiles(activeCourseId);
       fetchCourseFolders(activeCourseId);
@@ -397,6 +413,7 @@ export default function AcademicsTab() {
       const res = await fetch(`/api/courses/${courseId}/folders`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!isMountedRef.current) return;
       if (res.ok) {
         const data = await res.json();
         const cached = getFromCache(`${CACHE_KEYS.FILES}_folders_${courseId}`);
@@ -406,6 +423,7 @@ export default function AcademicsTab() {
         }
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
       console.error('Failed to fetch folders', error);
     }
   };
@@ -417,6 +435,7 @@ export default function AcademicsTab() {
       const res = await fetch(`/api/courses/${courseId}/files`, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      if (!isMountedRef.current) return;
       if (res.ok) {
         const data = await res.json();
         const cached = getFromCache(`${CACHE_KEYS.FILES}_${courseId}`);
@@ -426,6 +445,7 @@ export default function AcademicsTab() {
         }
       }
     } catch (error) {
+      if (!isMountedRef.current) return;
       console.error('Failed to fetch files', error);
     }
   };
@@ -545,7 +565,7 @@ export default function AcademicsTab() {
       }, 800);
     } catch (error) {
       console.error('Upload failed', error);
-      alert('Upload failed. Please check your network or try again.');
+      toast('Upload failed. Please check your network or try again.');
     } finally {
       setIsUploading(false);
     }
@@ -589,6 +609,7 @@ export default function AcademicsTab() {
       ]);
       
       if (myRes.ok && allRes.ok) {
+        if (!isMountedRef.current) return;
         const myData = await myRes.json();
         const allData = await allRes.json();
         setMyCourses(myData.courses);
@@ -1058,6 +1079,26 @@ export default function AcademicsTab() {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
+
+              {activeCourseId && (
+                <button 
+                  onClick={() => setShowCourseInfoModal(true)}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white p-2 rounded-md transition-colors"
+                  title="Course Details"
+                >
+                  <BookOpen className="w-4 h-4" />
+                </button>
+              )}
+
+              {isAdmin && activeCourseId && (
+                <button 
+                  onClick={() => setShowEditCourseModal(true)}
+                  className="bg-neutral-800 hover:bg-neutral-700 text-white p-2 rounded-md transition-colors"
+                  title="Edit Course Info"
+                >
+                  <Settings className="w-4 h-4" />
+                </button>
+              )}
               
               {isAdmin && (
                 <button 
@@ -1758,6 +1799,25 @@ export default function AcademicsTab() {
         ) : null}
       </DragOverlay>
 
+      {showEditCourseModal && activeCourse && (
+        <EditCourseModal 
+          course={activeCourse} 
+          onClose={() => setShowEditCourseModal(false)}
+          onUpdate={() => {
+            fetchCourses();
+            setShowEditCourseModal(false);
+          }}
+        />
+      )}
+
+      <CourseDetailsModal 
+        isOpen={showCourseInfoModal}
+        courseId={activeCourseId || ''}
+        onClose={() => setShowCourseInfoModal(false)}
+        onEnroll={() => {
+          fetchCourses();
+        }}
+      />
       </motion.div>
     </DndContext>
   );

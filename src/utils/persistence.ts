@@ -7,6 +7,7 @@ export const CACHE_KEYS = {
   GROUPS: 'campushub_groups_cache',
   COURSES: 'campushub_courses_cache',
   FILES: 'campushub_files_cache',
+  CLUBS: 'campushub_clubs_cache',
 };
 
 export const saveToCache = (key: string, data: any) => {

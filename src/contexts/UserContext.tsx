@@ -12,20 +12,23 @@ interface User {
   studentEmail?: string | null;
   googleEmail?: string | null;
   bio?: string | null;
+  
   avatarUrl?: string | null;
   bannerUrl?: string | null;
   links?: UserLink[];
   createdAt?: string;
   role?: string;
+  _count?: { followers: number; following: number; clubFollowing: number };
+  clubMemberships?: any[];
 }
 
 interface UserContextType {
   isAuthenticated: boolean;
   user: User | null;
-  login: (username: string, pass: string) => Promise<void>;
+  login: (username: string, pass: string) => Promise<any>;
   register: (username: string, pass: string, email?: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: { name?: string; bio?: string; links?: string[]; studentEmail?: string; googleEmail?: string }) => Promise<void>;
+  updateProfile: (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string }) => Promise<void>;
   uploadImage: (file: File, type: 'avatar' | 'banner') => Promise<void>;
   isVerified: boolean;
   verifyStudent: (email: string, code: string) => Promise<boolean>;
@@ -120,7 +123,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setIsVerified(false);
   };
 
-  const updateProfile = async (data: { name?: string; bio?: string; links?: string[]; studentEmail?: string; googleEmail?: string }) => {
+  const updateProfile = async (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string }) => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Not authenticated');
 

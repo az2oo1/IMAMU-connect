@@ -7,10 +7,11 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-interface OptimizedImageProps extends React.ImgHTMLAttributes<HTMLImageElement> {
+interface OptimizedImageProps extends Omit<React.ImgHTMLAttributes<HTMLImageElement>, 'onAnimationStart' | 'onDragStart' | 'onDragEnd' | 'onDrag' | 'ref'> {
   src: string;
   alt: string;
   className?: string;
+  imageClassName?: string;
   variant?: 'small' | 'medium' | 'large' | 'banner';
   blur?: boolean;
 }
@@ -19,6 +20,7 @@ export default function OptimizedImage({
   src, 
   alt, 
   className, 
+  imageClassName,
   variant = 'medium', 
   blur = true,
   ...props 
@@ -66,7 +68,7 @@ export default function OptimizedImage({
         />
       )}
       
-      <AnimatePresence mode="wait">
+      <AnimatePresence mode="popLayout">
         <motion.img
           key={finalSrc}
           src={finalSrc}
@@ -74,9 +76,11 @@ export default function OptimizedImage({
           onLoad={() => setIsLoaded(true)}
           initial={{ opacity: 0 }}
           animate={{ opacity: isLoaded ? 1 : 0 }}
+          exit={{ opacity: 0 }}
           transition={{ duration: 0.4 }}
           className={cn(
             "w-full h-full object-cover",
+            imageClassName,
             !isLoaded && "invisible"
           )}
           referrerPolicy="no-referrer"

@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
 import { useNavigate } from 'react-router-dom';
 import OptimizedImage from '../components/OptimizedImage';
-import { Tent, Search, ArrowRight, Flag } from 'lucide-react';
+import { Tent, Search, ArrowRight, Flag, Settings } from 'lucide-react';
 import { clsx } from 'clsx';
 import { useDraggableScroll } from '../hooks/useDraggableScroll';
+import { getFromCache, saveToCache, CACHE_KEYS } from '../utils/persistence';
+import { useUser } from '../contexts/UserContext';
 
 export const CLUBS_DATA = [
   {
@@ -111,10 +113,27 @@ export const CLUBS_DATA = [
 const CATEGORIES = ["All", "Tech", "Academic", "Arts", "Sports", "Social"];
 
 export default function ClubsTab() {
+  const { user } = useUser();
+  const cachedClubs = getFromCache(CACHE_KEYS.CLUBS, []);
+  
+  const getTagsFromClubs = (clubsList: any[]) => {
+    const uniqueTags = new Set<string>();
+    clubsList.forEach((club: any) => {
+      if (club.tags) {
+        club.tags.split(',').forEach((t: string) => {
+          const tag = t.trim();
+          if (tag) uniqueTags.add(tag);
+        });
+      }
+    });
+    return ["All", ...Array.from(uniqueTags)];
+  };
+
   const [activeCategory, setActiveCategory] = useState("All");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [clubs, setClubs] = useState<any[]>([]);
+  const [clubs, setClubs] = useState<any[]>(cachedClubs);
+  const [dynamicTags, setDynamicTags] = useState<string[]>(cachedClubs.length > 0 ? getTagsFromClubs(cachedClubs) : []);
   const [isLoading, setIsLoading] = useState(true);
+  const [tagsLoading, setTagsLoading] = useState(true);
   const dragScroll = useDraggableScroll<HTMLDivElement>();
   const navigate = useNavigate();
 
@@ -125,11 +144,14 @@ export default function ClubsTab() {
         if (res.ok) {
           const data = await res.json();
           setClubs(data.clubs);
+          saveToCache(CACHE_KEYS.CLUBS, data.clubs);
+          setDynamicTags(getTagsFromClubs(data.clubs));
         }
       } catch (error) {
         console.error('Failed to fetch clubs', error);
       } finally {
         setIsLoading(false);
+        setTagsLoading(false);
       }
     };
     fetchClubs();
@@ -137,9 +159,7 @@ export default function ClubsTab() {
 
   const filteredClubs = clubs.filter(club => {
     const matchesCategory = activeCategory === "All" || (club.tags && club.tags.includes(activeCategory));
-    const matchesSearch = club?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') || 
-                          (club.description && club.description.toLowerCase().includes(searchQuery?.toLowerCase() || ''));
-    return matchesCategory && matchesSearch;
+    return matchesCategory;
   });
 
   return (
@@ -166,51 +186,50 @@ export default function ClubsTab() {
         </div>
 
         {/* Search & Filter */}
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
-            <input 
-              type="text" 
-              placeholder="Search clubs..." 
-              className="w-full bg-neutral-900/80 backdrop-blur-xl border border-white/10 rounded-2xl py-3 pl-12 pr-4 text-sm focus:outline-none focus:border-primary-500 text-neutral-200 transition-colors shadow-2xl"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-
-          <div className="bg-neutral-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl inline-flex max-w-full">
-            <div 
-              {...dragScroll}
-              className="flex gap-1 overflow-x-auto scrollbar-hide select-none"
-            >
-              {CATEGORIES.map((category) => (
-                <button
-                  key={category}
-                  onClick={() => setActiveCategory(category)}
-                  className={clsx(
-                    "relative px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-colors duration-300",
-                    activeCategory === category
-                      ? "text-white"
-                      : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
-                  )}
-                >
-                  {activeCategory === category && (
-                    <motion.div
-                      layoutId="clubs-category"
-                      className="absolute inset-0 bg-primary-500 rounded-xl shadow-lg shadow-primary-500/25"
-                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                    />
-                  )}
-                  <span className="relative z-10">{category}</span>
-                </button>
-              ))}
+        <div className="flex flex-col md:flex-row gap-4 mb-8 justify-between items-start md:items-stretch">
+          <div className="flex-1 min-w-0 max-w-full flex items-center">
+            <div className="bg-neutral-900/80 backdrop-blur-xl p-1.5 rounded-2xl border border-white/10 shadow-2xl inline-flex max-w-full overflow-hidden">
+              <div 
+                {...dragScroll}
+                className="flex gap-1 overflow-x-auto scrollbar-hide select-none w-full"
+              >
+                {(tagsLoading && dynamicTags.length === 0) ? (
+                  <div className="flex gap-2 p-2 px-4">
+                    <div className="w-16 h-6 bg-neutral-800 animate-pulse rounded-md"></div>
+                    <div className="w-24 h-6 bg-neutral-800 animate-pulse rounded-md"></div>
+                    <div className="w-20 h-6 bg-neutral-800 animate-pulse rounded-md"></div>
+                  </div>
+                ) : (dynamicTags.length > 1 ? dynamicTags : CATEGORIES).map((category) => (
+                  <button
+                    key={category}
+                    onClick={() => setActiveCategory(category)}
+                    className={clsx(
+                      "relative px-5 py-2.5 rounded-xl text-sm font-bold whitespace-nowrap transition-colors duration-300",
+                      activeCategory === category
+                        ? "text-white"
+                        : "text-neutral-400 hover:text-neutral-200 hover:bg-white/5"
+                    )}
+                  >
+                    {activeCategory === category && (
+                      <motion.div
+                        layoutId="clubs-category"
+                        className="absolute inset-0 bg-primary-500 rounded-xl"
+                        transition={{ type: "spring", bounce: 0, duration: 0.3 }}
+                      />
+                    )}
+                    <span className="relative z-10">{category}</span>
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
         </div>
 
         {/* Clubs Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-16">
-          {filteredClubs.map((club, index) => (
+          {filteredClubs.map((club, index) => {
+            const isManager = user?.role === 'ADMIN' || user?.clubMemberships?.some((m: any) => m.club.id === club.id);
+            return (
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -235,9 +254,18 @@ export default function ClubsTab() {
                   )}
                 </div>
                 {club.tags && (
-                  <span className="px-3 py-1 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold tracking-wider uppercase backdrop-blur-md">
-                    {club.tags.split(',')[0]}
-                  </span>
+                  <div className="flex flex-wrap gap-1.5 justify-end">
+                    {club.tags.split(',').slice(0, 2).map((tag: string) => (
+                      <span key={tag} className="px-3 py-1 rounded-full bg-primary-500/20 border border-primary-500/30 text-primary-300 text-xs font-bold tracking-wider uppercase backdrop-blur-md">
+                        {tag.trim()}
+                      </span>
+                    ))}
+                    {club.tags.split(',').length > 2 && (
+                       <span className="px-2 py-1 rounded-full bg-white/5 border border-white/10 text-neutral-400 text-xs font-bold tracking-wider uppercase backdrop-blur-md">
+                         +{club.tags.split(',').length - 2}
+                       </span>
+                    )}
+                  </div>
                 )}
               </div>
               
@@ -258,7 +286,8 @@ export default function ClubsTab() {
                 </div>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
 
         {/* Empty State */}
@@ -286,7 +315,7 @@ export default function ClubsTab() {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-              <button className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold bg-primary-600 hover:bg-primary-500 text-white transition-colors shadow-lg shadow-primary-500/25">
+              <button className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold bg-primary-600 hover:bg-primary-500 text-white transition-colors">
                 Register Club
               </button>
               <button className="w-full sm:w-auto px-6 py-2.5 rounded-xl text-sm font-bold bg-white/5 hover:bg-white/10 text-white border border-white/10 transition-colors">

@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X } from 'lucide-react';
@@ -120,7 +121,7 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
 
                 <button
                   type="button"
-                  onClick={() => alert("Google Sign-In will be implemented soon!")}
+                  onClick={() => toast("Google Sign-In will be implemented soon!")}
                   className="w-full bg-white text-black hover:bg-neutral-200 font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-3"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">

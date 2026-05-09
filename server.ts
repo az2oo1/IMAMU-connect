@@ -144,6 +144,103 @@ async function startServer() {
   app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
   // --- API ROUTES ---
+
+  // Preview Link
+  app.get('/api/preview-link', async (req, res) => {
+    try {
+      const { url } = req.query;
+      if (!url || typeof url !== 'string') return res.status(400).json({ error: 'URL is required' });
+      
+      const ArticleRegex = /\/news\/([^\/\?&#]+)/;
+      const ClubRegex = /\/clubs\/([^\/\?&#]+)/;
+      const FormRegex = /\/forms\/([^\/\?&#]+)/;
+      
+      const matchArticle = url.match(ArticleRegex);
+      if (matchArticle) {
+        const articleId = matchArticle[1];
+        const article = await prisma.newsArticle.findUnique({
+          where: { id: articleId },
+          include: { author: true, club: true }
+        });
+        if (article) {
+          return res.json({
+            type: 'article',
+            articleId,
+            article,
+            clubId: article.clubId,
+            title: article.title,
+            description: `By ${article.author.name}${article.club ? ' in ' + article.club.name : ''} • ${article.content ? article.content.substring(0, 150) : ''}`,
+            image: article.photoUrl || (article.club ? article.club.bannerUrl || article.club.avatarUrl : null) || null,
+            url
+          });
+        }
+      }
+      
+      const matchForm = url.match(FormRegex);
+      if (matchForm && !matchArticle) {
+        const formId = matchForm[1];
+        const form = await prisma.form.findUnique({
+          where: { id: formId }
+        });
+        if (form) {
+          let club = null;
+          if (form.entityType === 'club' && form.entityId) {
+            club = await prisma.club.findUnique({ where: { id: form.entityId } });
+          }
+          return res.json({
+            type: 'form',
+            formId,
+            form,
+            clubId: form.entityId,
+            title: form.title,
+            description: `Form${club ? ' for ' + club.name : ''} • ${form.description || ''}`,
+            image: club?.bannerUrl || club?.avatarUrl || null,
+            url
+          });
+        }
+      }
+
+      const matchClub = url.match(ClubRegex);
+      if (matchClub && !matchArticle && !matchForm && !url.includes('/manage')) {
+        const clubId = matchClub[1];
+        const club = await prisma.club.findUnique({
+          where: { id: clubId }
+        });
+        if (club) {
+          return res.json({
+            title: club.name,
+            description: club.description,
+            image: club.bannerUrl || club.avatarUrl || null,
+            url
+          });
+        }
+      }
+
+      // External Link preview using Cheerio
+      const cheerio = await import('cheerio');
+      const response = await fetch(url, {
+         headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' }
+      });
+      const html = await response.text();
+      const $ = cheerio.load(html);
+      
+      const title = $('meta[property="og:title"]').attr('content') || $('title').text() || $('meta[name="twitter:title"]').attr('content');
+      const description = $('meta[property="og:description"]').attr('content') || $('meta[name="description"]').attr('content') || $('meta[name="twitter:description"]').attr('content');
+      let image = $('meta[property="og:image"]').attr('content') || $('meta[name="twitter:image"]').attr('content');
+      
+      if (image && !image.startsWith('http')) {
+         try {
+            const urlObj = new URL(url);
+            image = urlObj.origin + (image.startsWith('/') ? '' : '/') + image;
+         } catch(e) {}
+      }
+      
+      res.json({ title, description, image, url });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch link preview' });
+    }
+  });
+
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
@@ -198,7 +295,7 @@ async function startServer() {
         return res.sendFile(filePath);
       }
 
-      const sharp = require('sharp');
+      const sharp = (await import('sharp')).default;
       const stream = sharp(filePath)
         .resize(width, height, { fit: 'cover', withoutEnlargement: true })
         .jpeg({ quality: 80 });
@@ -263,7 +360,24 @@ async function startServer() {
           name: username,
           role: (email === 'abdulazizalgassem4@gmail.com' || username === 'admin') ? 'ADMIN' : 'USER'
         },
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true }
+        select: { 
+          id: true, 
+          username: true, 
+          name: true, 
+          studentEmail: true, 
+          googleEmail: true, 
+          bio: true, 
+          avatarUrl: true, 
+          bannerUrl: true, 
+          links: true, 
+          createdAt: true, 
+          role: true, 
+          _count: { select: { followers: true, following: true, clubFollowing: true } },
+          clubMemberships: { 
+            where: { isAdmin: true },
+            select: { club: { select: { id: true, name: true, avatarUrl: true } } }
+          }
+        }
       });
 
       // Create welcome notification
@@ -304,7 +418,29 @@ async function startServer() {
             { studentEmail: normalizedUsername },
             { googleEmail: normalizedUsername }
           ]
-        } 
+        },
+        select: {
+          id: true,
+          username: true,
+          name: true,
+          studentEmail: true,
+          googleEmail: true,
+          bio: true,
+          
+          avatarUrl: true,
+          bannerUrl: true,
+          links: true,
+          createdAt: true,
+          role: true,
+          passwordHash: true,
+          isBanned: true,
+          isSuspended: true,
+          _count: { select: { followers: true, following: true, clubFollowing: true } },
+          clubMemberships: { 
+            where: { isAdmin: true },
+            select: { club: { select: { id: true, name: true, avatarUrl: true } } }
+          }
+        }
       });
       if (!user || !user.passwordHash) {
         return res.status(401).json({ error: 'Invalid credentials' });
@@ -348,7 +484,24 @@ async function startServer() {
       
       const user = await prisma.user.findUnique({ 
         where: { id: decoded.userId },
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true }
+        select: { 
+          id: true, 
+          username: true, 
+          name: true, 
+          studentEmail: true, 
+          googleEmail: true, 
+          bio: true, 
+          avatarUrl: true, 
+          bannerUrl: true, 
+          links: true, 
+          createdAt: true, 
+          role: true, 
+          _count: { select: { followers: true, following: true, clubFollowing: true } },
+          clubMemberships: { 
+            where: { isAdmin: true },
+            select: { club: { select: { id: true, name: true, avatarUrl: true } } }
+          }
+        }
       });
       
       if (!user) return res.status(404).json({ error: 'User not found' });
@@ -363,6 +516,7 @@ async function startServer() {
 
       res.json({ user });
     } catch (error) {
+      console.error('Auth /me Error:', error);
       res.status(401).json({ error: 'Invalid token' });
     }
   });
@@ -429,7 +583,7 @@ async function startServer() {
       const user = await prisma.user.update({
         where: { id: decoded.userId },
         data: updateData,
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true }
+        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, _count: { select: { followers: true, following: true, clubFollowing: true } } }
       });
 
       // Update links if provided
@@ -477,7 +631,7 @@ async function startServer() {
             const user = await prisma.user.update({
               where: { id: req.user.userId },
               data: updateData,
-              select: { id: true, username: true, name: true, studentEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true }
+              select: { id: true, username: true, name: true, studentEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, _count: { select: { followers: true, following: true, clubFollowing: true } } }
             });
             return res.json({ user });
           }
@@ -494,18 +648,295 @@ async function startServer() {
   });
 
   // Users: Get Public Profile
+  app.post('/api/users/:id/follow', authenticateToken, async (req: any, res) => {
+    try {
+      const targetId = req.params.id;
+      if (req.user.userId === targetId) return res.status(400).json({ error: 'Cannot follow yourself' });
+
+      const existing = await prisma.userFollows.findUnique({
+        where: { followerId_followingId: { followerId: req.user.userId, followingId: targetId } }
+      });
+
+      if (existing) {
+        await prisma.userFollows.delete({ where: { followerId_followingId: { followerId: req.user.userId, followingId: targetId } } });
+        res.json({ following: false });
+      } else {
+        await prisma.userFollows.create({ data: { followerId: req.user.userId, followingId: targetId } });
+        res.json({ following: true });
+      }
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to follow user' });
+    }
+  });
+
+  app.post('/api/clubs/:id/follow', authenticateToken, async (req: any, res) => {
+    try {
+      const targetId = req.params.id;
+      const existing = await prisma.clubFollows.findUnique({
+        where: { followerId_clubId: { followerId: req.user.userId, clubId: targetId } }
+      });
+
+      if (existing) {
+        await prisma.clubFollows.delete({ where: { followerId_clubId: { followerId: req.user.userId, clubId: targetId } } });
+        res.json({ following: false });
+      } else {
+        await prisma.clubFollows.create({ data: { followerId: req.user.userId, clubId: targetId } });
+        res.json({ following: true });
+      }
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.post('/api/news/:id/save', authenticateToken, async (req: any, res) => {
+    try {
+      const targetId = req.params.id;
+      const existing = await prisma.savedArticle.findUnique({
+        where: { userId_articleId: { userId: req.user.userId, articleId: targetId } }
+      });
+
+      if (existing) {
+        await prisma.savedArticle.delete({ where: { userId_articleId: { userId: req.user.userId, articleId: targetId } } });
+        res.json({ saved: false });
+      } else {
+        await prisma.savedArticle.create({ data: { userId: req.user.userId, articleId: targetId } });
+        res.json({ saved: true });
+      }
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  const globalSearchCache = new Map<string, { timestamp: number, data: any }>();
+  const CACHE_TTL = 60000; // 60 seconds
+
+  app.get('/api/global-search', authenticateToken, async (req: any, res) => {
+    try {
+      const q = req.query.q as string || '';
+      if (!q.trim()) {
+        return res.json({ users: [], clubs: [], articles: [], files: [], courses: [] });
+      }
+
+      const cacheKey = `${req.user.userId}:${q.toLowerCase().trim()}`;
+      const cached = globalSearchCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+        return res.json(cached.data);
+      }
+
+      const usersPromise = prisma.user.findMany({
+        where: {
+          OR: [
+            { username: { contains: q, mode: 'insensitive' } },
+            { name: { contains: q, mode: 'insensitive' } }
+          ]
+        },
+        select: { id: true, username: true, name: true, avatarUrl: true, role: true },
+        take: 5
+      });
+
+      const clubsPromise = prisma.club.findMany({
+        where: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { description: { contains: q, mode: 'insensitive' } },
+            { tags: { contains: q, mode: 'insensitive' } }
+          ]
+        },
+        select: { id: true, name: true, avatarUrl: true, tags: true },
+        take: 5
+      });
+
+      const articlesPromise = prisma.newsArticle.findMany({
+        where: {
+          OR: [
+            { title: { contains: q, mode: 'insensitive' } },
+            { content: { contains: q, mode: 'insensitive' } }
+          ],
+          isArchived: false
+        },
+        select: { id: true, title: true, tag: true, createdAt: true, author: { select: { name: true, username: true } }, club: { select: { name: true } } },
+        take: 5
+      });
+
+      const coursesPromise = prisma.course.findMany({
+        where: {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { code: { contains: q, mode: 'insensitive' } },
+            { tags: { contains: q, mode: 'insensitive' } }
+          ]
+        },
+        select: { id: true, name: true, code: true, avatarUrl: true },
+        take: 5
+      });
+
+      const filesPromise = (async () => {
+        const enrolledCourseIds = (await prisma.enrollment.findMany({
+          where: { userId: req.user.userId },
+          select: { courseId: true }
+        })).map((e: any) => e.courseId);
+
+        if (enrolledCourseIds.length > 0) {
+          return prisma.academicFile.findMany({
+            where: {
+              name: { contains: q, mode: 'insensitive' },
+              status: 'APPROVED',
+              courseId: { in: enrolledCourseIds }
+            },
+            select: { id: true, name: true, url: true, size: true, course: { select: { id: true, code: true, name: true } } },
+            take: 5
+          });
+        }
+        return [];
+      })();
+
+      const [users, clubs, articles, courses, files] = await Promise.all([
+        usersPromise, clubsPromise, articlesPromise, coursesPromise, filesPromise
+      ]);
+
+      const result = { users, clubs, articles, files, courses };
+      globalSearchCache.set(cacheKey, { timestamp: Date.now(), data: result });
+      
+      if (globalSearchCache.size > 1000) {
+        const firstKey = globalSearchCache.keys().next().value;
+        if (firstKey) globalSearchCache.delete(firstKey);
+      }
+
+      res.json(result);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.get('/api/users/search', authenticateToken, async (req: any, res) => {
+    try {
+      const q = req.query.q as string || '';
+      const users = await prisma.user.findMany({
+        where: {
+          OR: [
+            { username: { contains: q.toLowerCase() } },
+            { name: { contains: q } }
+          ]
+        },
+        take: 10,
+        select: { id: true, username: true, name: true, avatarUrl: true }
+      });
+      res.json({ users });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to search users' });
+    }
+  });
+
   app.get('/api/users/:username', async (req, res) => {
     try {
       const normalizedUsername = req.params.username.toLowerCase();
       const user = await prisma.user.findUnique({
         where: { username: normalizedUsername },
-        select: { id: true, username: true, name: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true }
+        select: { 
+          id: true, 
+          username: true, 
+          name: true, 
+          bio: true, 
+          avatarUrl: true, 
+          bannerUrl: true, 
+          links: true, 
+          createdAt: true,
+          role: true,
+          articles: {
+            where: { isArchived: false, clubId: null },
+            orderBy: { createdAt: 'desc' }
+          },
+          _count: {
+            select: { followers: true, following: true, clubFollowing: true }
+          }
+        }
       });
       
       if (!user) return res.status(404).json({ error: 'User not found' });
-      res.json({ user });
+
+      let isFollowing = false;
+      if (req.headers.authorization) {
+        try {
+           const token = req.headers.authorization.split(' ')[1];
+           if (token && token !== 'null') {
+             const decoded = jwt.verify(token, JWT_SECRET) as any;
+             if (decoded && decoded.userId) {
+                const follow = await prisma.userFollows.findUnique({
+                  where: { followerId_followingId: { followerId: decoded.userId, followingId: user.id } }
+                });
+                isFollowing = !!follow;
+             }
+           }
+        } catch (e) {
+          console.error("JWT Error in user profile:", e);
+        }
+      }
+
+      res.json({ user: { ...user, isFollowing } });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch user' });
+    }
+  });
+
+  app.get('/api/users/:username/followers', async (req, res) => {
+    try {
+      const normalizedUsername = req.params.username.toLowerCase();
+      const user = await prisma.user.findUnique({
+        where: { username: normalizedUsername },
+      });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const followers = await prisma.userFollows.findMany({
+        where: { followingId: user.id },
+        include: {
+          follower: {
+            select: { id: true, username: true, name: true, avatarUrl: true, bio: true }
+          }
+        }
+      });
+      res.json({ followers: followers.map(f => f.follower) });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed to fetch followers' });
+    }
+  });
+
+  app.get('/api/users/:username/following', async (req, res) => {
+    try {
+      const normalizedUsername = req.params.username.toLowerCase();
+      const user = await prisma.user.findUnique({
+        where: { username: normalizedUsername },
+      });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const followingUsers = await prisma.userFollows.findMany({
+        where: { followerId: user.id },
+        include: {
+          following: {
+            select: { id: true, username: true, name: true, avatarUrl: true, bio: true }
+          }
+        }
+      });
+      
+      const followingClubs = await prisma.clubFollows.findMany({
+        where: { followerId: user.id },
+        include: {
+          club: {
+            select: { id: true, name: true, avatarUrl: true, description: true }
+          }
+        }
+      });
+
+      res.json({ 
+        following: [
+          ...followingUsers.map(f => f.following),
+          ...followingClubs.map(f => ({ ...f.club, username: f.club.name, isClub: true, bio: f.club.description }))
+        ]
+      });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed to fetch following' });
     }
   });
 
@@ -518,7 +949,9 @@ async function startServer() {
           links: true,
           articles: {
             take: 3,
-            orderBy: { createdAt: 'desc' }
+            select: { id: true, title: true, slug: true, photoUrl: true, tag: true, createdAt: true },
+            orderBy: { createdAt: 'desc' },
+            where: { isArchived: false }
           }
         },
         orderBy: { createdAt: 'desc' }
@@ -531,19 +964,74 @@ async function startServer() {
 
   app.get('/api/clubs/:id', async (req, res) => {
     try {
-      const club = await prisma.club.findUnique({
-        where: { id: req.params.id },
-        include: { 
-          _count: { select: { members: true } },
-          links: true,
-          articles: {
-            orderBy: { createdAt: 'desc' }
+      const isManageCall = req.query.manage === 'true';
+      
+      let club;
+      if (isManageCall) {
+        club = await prisma.club.findUnique({
+          where: { id: req.params.id },
+          include: { 
+            _count: { select: { members: true, followers: true } },
+            roles: true,
+            links: true,
+            articles: {
+              select: { id: true, title: true, slug: true, photoUrl: true, tag: true, createdAt: true, isArchived: true, content: true, images: true },
+              orderBy: { createdAt: 'desc' }
+            }
           }
-        }
-      });
+        });
+      } else {
+        // Increment page views asynchronously so it doesn't block
+        prisma.club.update({
+          where: { id: req.params.id },
+          data: { pageViews: { increment: 1 } }
+        }).catch(err => console.error('Failed to increment view', err));
+
+        club = await prisma.club.findUnique({
+          where: { id: req.params.id },
+          include: { 
+            _count: { select: { members: true, followers: true } },
+            links: true,
+            articles: {
+              where: { isArchived: false },
+              select: { id: true, title: true, slug: true, photoUrl: true, tag: true, createdAt: true, content: true, images: true, isArchived: true },
+              orderBy: { createdAt: 'desc' },
+              take: 20
+            },
+            members: {
+              take: 100,
+              include: {
+                role: true,
+                user: { select: { id: true, name: true, username: true, avatarUrl: true } }
+              }
+            }
+          }
+        });
+      }
+      
       if (!club) return res.status(404).json({ error: 'Club not found' });
-      res.json({ club });
+
+      let isFollowing = false;
+      if (req.headers.authorization) {
+        try {
+           const token = req.headers.authorization.split(' ')[1];
+           if (token && token !== 'null') {
+             const decoded = jwt.verify(token, JWT_SECRET) as any;
+             if (decoded && decoded.userId) {
+                const follow = await prisma.clubFollows.findUnique({
+                  where: { followerId_clubId: { followerId: decoded.userId, clubId: club.id } }
+                });
+                isFollowing = !!follow;
+             }
+           }
+        } catch (e) {
+          console.error("JWT Error in club fetch:", e);
+        }
+      }
+
+      res.json({ club: { ...club, isFollowing } });
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Failed to fetch club' });
     }
   });
@@ -557,14 +1045,77 @@ async function startServer() {
             userId: req.user.userId,
             clubId: req.params.id
           }
-        }
+        },
+        include: { role: true }
       });
       res.json({ 
-        isMember: !!membership, 
-        isAdmin: membership?.isAdmin || false 
+        isMember: !!membership || req.user.role === 'ADMIN', 
+        isAdmin: membership?.isAdmin || req.user.role === 'ADMIN',
+        permissions: membership?.role?.permissions || [],
+        roleName: membership?.role?.name || membership?.roleTitle
       });
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Failed to fetch role' });
+    }
+  });
+
+  
+  app.get('/api/clubs/:id/roles', authenticateToken, async (req: any, res) => {
+    try {
+      const roles = await prisma.clubRole.findMany({ where: { clubId: req.params.id } });
+      res.json({ roles });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed to fetch roles' });
+    }
+  });
+
+  app.post('/api/clubs/:id/roles', authenticateToken, async (req: any, res) => {
+    try {
+      const membership = await prisma.clubMember.findUnique({
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+      });
+      if (!membership || !membership.isAdmin) return res.status(403).json({ error: 'Not authorized' });
+      
+      const { name, permissions } = req.body;
+      const role = await prisma.clubRole.create({
+        data: { clubId: req.params.id, name, permissions }
+      });
+      res.json({ role });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.put('/api/clubs/:id/roles/:roleId', authenticateToken, async (req: any, res) => {
+    try {
+      const membership = await prisma.clubMember.findUnique({
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+      });
+      if (!membership || !membership.isAdmin) return res.status(403).json({ error: 'Not authorized' });
+      
+      const { name, permissions } = req.body;
+      const role = await prisma.clubRole.update({
+        where: { id: req.params.roleId },
+        data: { name, permissions }
+      });
+      res.json({ role });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.delete('/api/clubs/:id/roles/:roleId', authenticateToken, async (req: any, res) => {
+    try {
+      const membership = await prisma.clubMember.findUnique({
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+      });
+      if (!membership || !membership.isAdmin) return res.status(403).json({ error: 'Not authorized' });
+      
+      await prisma.clubRole.delete({ where: { id: req.params.roleId } });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
     }
   });
 
@@ -585,10 +1136,11 @@ async function startServer() {
       const membership = await prisma.clubMember.findUnique({
         where: {
           userId_clubId: { userId: req.user.userId, clubId: req.params.id }
-        }
+        },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_settings'))) {
         return res.status(403).json({ error: 'Not authorized to manage this club' });
       }
 
@@ -634,10 +1186,11 @@ async function startServer() {
       const membership = await prisma.clubMember.findUnique({
         where: {
           userId_clubId: { userId: req.user.userId, clubId: req.params.id }
-        }
+        },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_news'))) {
         return res.status(403).json({ error: 'Not authorized to post news for this club' });
       }
 
@@ -665,10 +1218,11 @@ async function startServer() {
   app.put('/api/clubs/:id/articles/:articleId', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
-        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_news'))) {
         return res.status(403).json({ error: 'Not authorized to edit news for this club' });
       }
 
@@ -694,10 +1248,11 @@ async function startServer() {
   app.patch('/api/clubs/:id/articles/:articleId/archive', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
-        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_news'))) {
         return res.status(403).json({ error: 'Not authorized to edit news for this club' });
       }
 
@@ -720,10 +1275,11 @@ async function startServer() {
   app.delete('/api/clubs/:id/articles/:articleId', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
-        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_news'))) {
         return res.status(403).json({ error: 'Not authorized to delete news for this club' });
       }
 
@@ -740,18 +1296,20 @@ async function startServer() {
   app.get('/api/clubs/:id/members', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
-        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_members'))) {
         return res.status(403).json({ error: 'Not authorized to view members for this club' });
       }
 
       const members = await prisma.clubMember.findMany({
         where: { clubId: req.params.id },
         include: {
+          role: true,
           user: {
-            select: { id: true, name: true, username: true, avatarUrl: true }
+            select: { id: true, name: true, username: true, avatarUrl: true, bio: true, studentEmail: true, googleEmail: true, createdAt: true, links: true }
           }
         }
       });
@@ -762,13 +1320,53 @@ async function startServer() {
     }
   });
 
+  app.post('/api/clubs/:id/members', authenticateToken, async (req: any, res) => {
+    try {
+      const membership = await prisma.clubMember.findUnique({
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
+      });
+      
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_members'))) {
+        return res.status(403).json({ error: 'Not authorized to add members to this club' });
+      }
+
+      const { userId } = req.body;
+      if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+      }
+
+      const newMember = await prisma.clubMember.create({
+        data: {
+          userId,
+          clubId: req.params.id,
+          isAdmin: false
+        },
+        include: {
+          user: {
+            select: { id: true, username: true, name: true, avatarUrl: true, studentEmail: true, googleEmail: true }
+          }
+        }
+      });
+
+      res.json({ success: true, member: newMember });
+    } catch (e: any) {
+      if (e.code === 'P2002') {
+        return res.status(400).json({ error: 'User is already a member' });
+      }
+      console.error('Failed to add club member', e);
+      res.status(500).json({ error: 'Failed to add club member' });
+    }
+  });
+
   app.delete('/api/clubs/:id/members/:userId', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
-        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_members'))) {
         return res.status(403).json({ error: 'Not authorized to remove members from this club' });
       }
 
@@ -785,18 +1383,25 @@ async function startServer() {
   app.put('/api/clubs/:id/members/:userId/role', authenticateToken, async (req: any, res) => {
     try {
       const membership = await prisma.clubMember.findUnique({
-        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } }
+        where: { userId_clubId: { userId: req.user.userId, clubId: req.params.id } },
+        include: { role: true }
       });
       
-      if (!membership || !membership.isAdmin) {
+      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_members'))) {
         return res.status(403).json({ error: 'Not authorized to change member roles' });
       }
 
-      const { isAdmin } = req.body;
+      const { isAdmin, roleTitle, managerId, roleId } = req.body;
+      
+      const updateData: any = {};
+      if (isAdmin !== undefined) updateData.isAdmin = isAdmin;
+      if (roleTitle !== undefined) updateData.roleTitle = roleTitle === '' ? null : roleTitle;
+      if (roleId !== undefined) updateData.roleId = roleId === null ? null : roleId;
+      if (managerId !== undefined) updateData.managerId = managerId === null ? null : managerId;
 
       await prisma.clubMember.update({
         where: { userId_clubId: { userId: req.params.userId, clubId: req.params.id } },
-        data: { isAdmin }
+        data: updateData
       });
 
       res.json({ success: true });
@@ -809,6 +1414,7 @@ async function startServer() {
   app.get('/api/courses', async (req, res) => {
     try {
       const courses = await prisma.course.findMany({
+        take: 100, // Prevent massive payloads for 10k users
         include: {
           _count: { select: { enrollments: true } }
         },
@@ -1151,6 +1757,7 @@ async function startServer() {
     try {
       const groups = await prisma.group.findMany({
         where: { isDirectMessage: false },
+        take: 100, // Prevent massive payloads for 10k users
         include: {
           course: true,
           _count: { select: { members: true } }
@@ -1387,7 +1994,8 @@ async function startServer() {
 
       res.json({ members: membersWithRoles });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to fetch group members' });
+      console.error('Error fetching group members:', error);
+      res.status(500).json({ error: 'Failed to fetch group members', message: error instanceof Error ? error.message : String(error) });
     }
   });
 
@@ -1596,7 +2204,7 @@ async function startServer() {
 
       try {
         const groupId = req.params.id;
-        const { content, replyToId } = req.body;
+        const { content, replyToId, pollData } = req.body;
         
         const group = await prisma.group.findFirst({
           where: { id: groupId, members: { some: { id: req.user.userId } } },
@@ -1616,7 +2224,8 @@ async function startServer() {
           content: content || '',
           groupId,
           authorId: req.user.userId,
-          replyToId: replyToId || null
+          replyToId: replyToId || null,
+          pollData: pollData || null
         };
 
         if (req.file) {
@@ -1824,6 +2433,75 @@ async function startServer() {
     }
   });
 
+  app.post('/api/groups/:groupId/messages/:messageId/vote', authenticateToken, async (req: any, res) => {
+    try {
+      const { groupId, messageId } = req.params;
+      const { optionId, optionIds } = req.body;
+      const userId = req.user.userId;
+
+      const message = await prisma.message.findUnique({
+        where: { id: messageId },
+        include: { group: { include: { members: true } } }
+      });
+
+      if (!message || message.groupId !== groupId) return res.status(404).json({ error: 'Message not found' });
+      if (!message.group.members.some(m => m.id === userId)) return res.status(403).json({ error: 'Not a member of this group' });
+      if (!message.pollData) return res.status(400).json({ error: 'Message is not a poll' });
+
+      let pollData = JSON.parse(message.pollData);
+      
+      const targetOptionIds = optionIds ? optionIds : [optionId];
+
+      // Remove user from all options first if using optionIds replacement or not allowMultiple
+      if (optionIds || !pollData.allowMultiple) {
+        pollData.options.forEach((o: any) => {
+          o.votes = o.votes.filter((id: string) => id !== userId);
+        });
+      }
+
+      if (optionIds) {
+        // Apply the exact final selection
+        targetOptionIds.forEach((selectedId: string) => {
+           const option = pollData.options.find((o: any) => o.id === selectedId);
+           if (option && (!pollData.allowMultiple ? targetOptionIds[0] === selectedId : true)) {
+             option.votes.push(userId);
+           }
+        });
+      } else {
+        // Legacy toggle for single optionId
+        const option = pollData.options.find((o: any) => o.id === optionId);
+        if (!option) return res.status(400).json({ error: 'Invalid option' });
+
+        const hasVotedThisOption = option.votes.includes(userId);
+        if (hasVotedThisOption) {
+          option.votes = option.votes.filter((id: string) => id !== userId);
+        } else {
+          option.votes.push(userId);
+        }
+      }
+
+      const updatedMessage = await prisma.message.update({
+        where: { id: messageId },
+        data: { pollData: JSON.stringify(pollData) },
+        include: {
+          author: { select: { id: true, name: true, username: true, avatarUrl: true, role: true } },
+          replyTo: { select: { id: true, content: true, author: { select: { name: true } } } },
+          deletedBy: { select: { id: true } }
+        }
+      });
+
+      const io = req.app.get('io');
+      if (io) {
+        io.to(`group_${groupId}`).emit('message_updated', { message: { ...updatedMessage, deletedForMe: false } });
+      }
+
+      res.json(updatedMessage);
+    } catch (error) {
+      console.error('Vote error:', error);
+      res.status(500).json({ error: 'Failed to record vote' });
+    }
+  });
+
   // --- ADMIN ROUTES ---
   
   // Middleware to check admin role
@@ -1896,19 +2574,250 @@ async function startServer() {
     }
   });
 
+  app.get('/api/user/managed-clubs', authenticateToken, async (req: any, res) => {
+    try {
+      const memberships = await prisma.clubMember.findMany({
+        where: { userId: req.user.userId, isAdmin: true },
+        include: { club: true }
+      });
+      res.json({ clubs: memberships.map(m => m.club) });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.get('/api/users/:id/articles', async (req: any, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 5;
+      const skip = (page - 1) * limit;
+
+      const userHeaderId = req.headers.authorization ? (() => {
+        try {
+          const token = req.headers.authorization.split(' ')[1];
+          if (token && token !== 'null') {
+            const decoded = jwt.verify(token, JWT_SECRET) as any;
+            return decoded.userId;
+          }
+          return null;
+        } catch { return null; }
+      })() : null;
+
+      const isOwner = userHeaderId === req.params.id;
+
+      let whereClause: any = { authorId: req.params.id, clubId: null };
+      if (!isOwner) {
+        whereClause.isArchived = false;
+      }
+
+      const articles = await prisma.newsArticle.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      });
+
+      let archived: any[] = [];
+      if (isOwner && page === 1) {
+        archived = await prisma.newsArticle.findMany({
+          where: { authorId: req.params.id, isArchived: true, clubId: null },
+          orderBy: { createdAt: 'desc' },
+        });
+      }
+
+      res.json({ articles, archived });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.get('/api/user/articles', authenticateToken, async (req: any, res) => {
+    try {
+      const articles = await prisma.newsArticle.findMany({
+        where: { authorId: req.user.userId },
+        orderBy: { createdAt: 'desc' },
+      });
+      res.json({ articles });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.post('/api/user/articles', authenticateToken, async (req: any, res) => {
+    try {
+      if (req.user.role !== 'NEWS_WRITER' && req.user.role !== 'ADMIN') {
+        return res.status(403).json({ error: 'Not authorized' });
+      }
+      const { title, content, imageUrl, photoUrl, tag, images, clubId, isArchived } = req.body;
+      
+      if (clubId) {
+        const membership = await prisma.clubMember.findUnique({
+          where: { userId_clubId: { userId: req.user.userId, clubId } }
+        });
+        if (!membership || !membership.isAdmin) {
+          return res.status(403).json({ error: 'Not authorized for this club' });
+        }
+      }
+
+      const article = await prisma.newsArticle.create({
+        data: {
+          slug: title.toLowerCase().replace(/[^a-z0-9]+/g, '-') + '-' + Date.now(),
+          title,
+          content,
+          photoUrl: photoUrl || imageUrl,
+          images: images ? JSON.stringify(images) : undefined,
+          tag,
+          authorId: req.user.userId,
+          clubId: clubId || null,
+          isArchived: isArchived || false
+        }
+      });
+      res.json({ article });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.get('/api/user/saved-articles', authenticateToken, async (req: any, res) => {
+    try {
+      const saved = await prisma.savedArticle.findMany({
+        where: { userId: req.user.userId },
+        include: {
+          article: {
+            include: {
+              author: { select: { id: true, name: true, username: true, avatarUrl: true } },
+              club: { select: { id: true, name: true, avatarUrl: true } }
+            }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json({ articles: saved.map((s: any) => s.article) });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.put('/api/user/articles/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const article = await prisma.newsArticle.findUnique({ where: { id: req.params.id } });
+      if (!article || article.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+      
+      const { title, content, photoUrl, tag, images, isArchived, clubId } = req.body;
+      const updated = await prisma.newsArticle.update({
+        where: { id: req.params.id },
+        data: { 
+          title, 
+          content, 
+          photoUrl, 
+          images: images ? JSON.stringify(images) : undefined, 
+          tag,
+          isArchived: typeof isArchived === 'boolean' ? isArchived : article.isArchived,
+          clubId: clubId === '' ? null : clubId
+        }
+      });
+      res.json({ article: updated });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.delete('/api/user/articles/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const article = await prisma.newsArticle.findUnique({ where: { id: req.params.id } });
+      if (!article || article.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+      
+      await prisma.newsArticle.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.patch('/api/user/articles/:id/archive', authenticateToken, async (req: any, res) => {
+    try {
+      const article = await prisma.newsArticle.findUnique({ where: { id: req.params.id } });
+      if (!article || article.authorId !== req.user.userId) return res.status(403).json({ error: 'Not authorized' });
+      
+      const updated = await prisma.newsArticle.update({
+        where: { id: req.params.id },
+        data: { isArchived: !article.isArchived }
+      });
+      res.json({ article: updated });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
   app.get('/api/news', async (req, res) => {
     try {
       const articles = await prisma.newsArticle.findMany({
         where: { isArchived: false },
         orderBy: { createdAt: 'desc' },
         include: {
-          author: { select: { name: true, username: true, avatarUrl: true } },
+          author: { select: { id: true, name: true, username: true, avatarUrl: true } },
           club: { select: { id: true, name: true, avatarUrl: true } }
         }
       });
-      res.json({ articles });
+      
+      let savedArticleIds = new Set();
+      if (req.headers.authorization) {
+        try {
+           const token = req.headers.authorization.split(' ')[1];
+           if (token && token !== 'null') {
+             const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+             if (decoded && decoded.userId) {
+                const saved = await prisma.savedArticle.findMany({
+                  where: { userId: decoded.userId },
+                  select: { articleId: true }
+                });
+                savedArticleIds = new Set(saved.map(s => s.articleId));
+             }
+           }
+        } catch (e) {
+          console.error("JWT Error in news fetch:", e);
+        }
+      }
+
+      res.json({ articles: articles.map(a => ({ ...a, isSaved: savedArticleIds.has(a.id) })) });
     } catch (error) {
+      console.error("News fetch error:", error);
       res.status(500).json({ error: 'Failed to fetch news' });
+    }
+  });
+
+  app.get('/api/news/:id', async (req, res) => {
+    try {
+      const article = await prisma.newsArticle.findUnique({
+        where: { id: req.params.id },
+        include: {
+          author: { select: { id: true, name: true, avatarUrl: true, username: true } },
+          club: { select: { id: true, name: true, avatarUrl: true, description: true } }
+        }
+      });
+      if (!article) return res.status(404).json({ error: 'Not found' });
+
+      let isSaved = false;
+      if (req.headers.authorization) {
+        try {
+           const token = req.headers.authorization.split(' ')[1];
+           if (token && token !== 'null') {
+             const decoded = jwt.verify(token, JWT_SECRET) as any;
+             if (decoded && decoded.userId) {
+                const saved = await prisma.savedArticle.findUnique({
+                  where: { userId_articleId: { userId: decoded.userId, articleId: article.id } }
+                });
+                isSaved = !!saved;
+             }
+           }
+        } catch (e) {
+          console.error("JWT Error in news article:", e);
+        }
+      }
+
+      res.json({ article: { ...article, isSaved } });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
     }
   });
 
@@ -1943,11 +2852,37 @@ async function startServer() {
   // Get all users
   app.get('/api/admin/users', requireAdmin, async (req, res) => {
     try {
-      const users = await prisma.user.findMany({
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, role: true, isBanned: true, createdAt: true },
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json({ users });
+      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const search = req.query.search as string || '';
+
+      const where = search ? {
+        OR: [
+          { name: { contains: search } },
+          { username: { contains: search } },
+          { studentEmail: { contains: search } }
+        ]
+      } : {};
+
+      if (page && limit) {
+        const [users, total] = await Promise.all([
+          prisma.user.findMany({
+            where,
+            select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, role: true, isBanned: true, createdAt: true, managerId: true, avatarUrl: true, orgTitle: true },
+            orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit
+          }),
+          prisma.user.count({ where })
+        ]);
+        res.json({ users, total, page, totalPages: Math.ceil(total / limit) });
+      } else {
+        const users = await prisma.user.findMany({
+          select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, role: true, isBanned: true, createdAt: true, managerId: true, avatarUrl: true, orgTitle: true },
+          orderBy: { createdAt: 'desc' }
+        });
+        res.json({ users });
+      }
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch users' });
     }
@@ -1970,7 +2905,7 @@ async function startServer() {
   // Update full user details
   app.put('/api/admin/users/:id', requireAdmin, async (req, res) => {
     try {
-      const { username, name, studentEmail, googleEmail, bio, password, role, isBanned } = req.body;
+      const { username, name, studentEmail, googleEmail, bio, password, role, isBanned, managerId, orgTitle } = req.body;
       
       const updateData: any = {};
       if (username !== undefined) updateData.username = username.toLowerCase();
@@ -1980,6 +2915,8 @@ async function startServer() {
       if (bio !== undefined) updateData.bio = bio;
       if (role !== undefined) updateData.role = role;
       if (isBanned !== undefined) updateData.isBanned = isBanned;
+      if (managerId !== undefined) updateData.managerId = managerId === null ? null : managerId;
+      if (orgTitle !== undefined) updateData.orgTitle = orgTitle === '' ? null : orgTitle;
       
       if (password) {
         updateData.passwordHash = await bcrypt.hash(password, 10);
@@ -2059,10 +2996,34 @@ async function startServer() {
   // Courses Management
   app.get('/api/admin/courses', requireAdmin, async (req, res) => {
     try {
-      const courses = await prisma.course.findMany({
-        orderBy: { name: 'asc' }
-      });
-      res.json({ courses });
+      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const search = req.query.search as string || '';
+
+      const where = search ? {
+        OR: [
+          { name: { contains: search } },
+          { code: { contains: search } }
+        ]
+      } : {};
+
+      if (page && limit) {
+        const [courses, total] = await Promise.all([
+          prisma.course.findMany({
+            where,
+            orderBy: { name: 'asc' },
+            skip: (page - 1) * limit,
+            take: limit
+          }),
+          prisma.course.count({ where })
+        ]);
+        res.json({ courses, total, page, totalPages: Math.ceil(total / limit) });
+      } else {
+        const courses = await prisma.course.findMany({
+          orderBy: { name: 'asc' }
+        });
+        res.json({ courses });
+      }
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch courses' });
     }
@@ -2070,9 +3031,9 @@ async function startServer() {
 
   app.post('/api/admin/courses', requireAdmin, async (req, res) => {
     try {
-      const { name, code, tags, description, avatarUrl, bannerUrl } = req.body;
+      const { name, code, tags, description, syllabus, freeResourcesUrl, paidResourcesUrl, avatarUrl, bannerUrl } = req.body;
       const course = await prisma.course.create({
-        data: { name, code, tags, description, avatarUrl, bannerUrl }
+        data: { name, code, tags, description, syllabus, freeResourcesUrl, paidResourcesUrl, avatarUrl, bannerUrl }
       });
       
       // Auto-create a group for this course
@@ -2097,14 +3058,62 @@ async function startServer() {
 
   app.put('/api/admin/courses/:id', requireAdmin, async (req, res) => {
     try {
-      const { name, code, tags, description, avatarUrl, bannerUrl } = req.body;
+      const { name, code, tags, description, syllabus, freeResourcesUrl, paidResourcesUrl, avatarUrl, bannerUrl } = req.body;
       const course = await prisma.course.update({
         where: { id: req.params.id },
-        data: { name, code, tags, description, avatarUrl, bannerUrl }
+        data: { name, code, tags, description, syllabus, freeResourcesUrl, paidResourcesUrl, avatarUrl, bannerUrl }
       });
       res.json({ course });
     } catch (error) {
       res.status(500).json({ error: 'Failed to update course' });
+    }
+  });
+
+  app.get('/api/courses/:id/details', authenticateToken, async (req: any, res) => {
+    try {
+      const courseId = req.params.id;
+      const course = await prisma.course.findUnique({
+        where: { id: courseId },
+        select: {
+          id: true, name: true, code: true, description: true, syllabus: true,
+          freeResourcesUrl: true, paidResourcesUrl: true, avatarUrl: true, bannerUrl: true, tags: true
+        }
+      });
+      if (!course) return res.status(404).json({ error: 'Course not found' });
+      
+      const enrollment = await prisma.enrollment.findFirst({
+        where: { courseId, userId: req.user.userId }
+      });
+
+      res.json({ course, isEnrolled: !!enrollment });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to fetch course details' });
+    }
+  });
+
+  app.put('/api/courses/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const courseId = req.params.id;
+      const { name, code, tags, description, syllabus, freeResourcesUrl, paidResourcesUrl, avatarUrl, bannerUrl } = req.body;
+
+      const isGlobalAdmin = req.user.role === 'ADMIN';
+      const enrollment = await prisma.enrollment.findFirst({
+        where: { courseId, userId: req.user.userId }
+      });
+
+      if (!isGlobalAdmin && !enrollment?.isAdmin) {
+        return res.status(403).json({ error: 'Only admins can edit course info' });
+      }
+
+      const course = await prisma.course.update({
+        where: { id: courseId },
+        data: { name, code, tags, description, syllabus, freeResourcesUrl, paidResourcesUrl, avatarUrl, bannerUrl }
+      });
+      res.json({ course });
+    } catch (error) {
+      console.error('Failed to update course:', error);
+      res.status(500).json({ error: 'Failed' });
     }
   });
 
@@ -2144,25 +3153,67 @@ async function startServer() {
 
   app.get('/api/admin/clubs', requireAdmin, async (req, res) => {
     try {
-      const clubs = await prisma.club.findMany({
-        include: { 
-          _count: { select: { members: true } },
-          links: true
-        },
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json({ clubs });
+      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const search = req.query.search as string || '';
+
+      const where = search ? {
+        OR: [
+          { name: { contains: search } },
+          { description: { contains: search } }
+        ]
+      } : {};
+
+      if (page && limit) {
+        const [clubs, total] = await Promise.all([
+          prisma.club.findMany({
+            where,
+            include: { 
+              _count: { select: { members: true } },
+              links: true
+            },
+            orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit
+          }),
+          prisma.club.count({ where })
+        ]);
+        res.json({ clubs, total, page, totalPages: Math.ceil(total / limit) });
+      } else {
+        const clubs = await prisma.club.findMany({
+          include: { 
+            _count: { select: { members: true } },
+            links: true
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+        res.json({ clubs });
+      }
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Failed to fetch clubs' });
     }
   });
 
-  app.post('/api/admin/clubs', requireAdmin, async (req, res) => {
+  app.post('/api/admin/clubs', requireAdmin, async (req: any, res) => {
     try {
-      const { name, description, tags } = req.body;
+      const { name, description, tags, adminId } = req.body;
       const club = await prisma.club.create({
         data: { name, description, tags }
       });
+      
+      // Assign an admin if provided, otherwise assign the user who created it
+      const targetAdminId = adminId || req.user.userId;
+      if (targetAdminId) {
+        await prisma.clubMember.create({
+          data: {
+            userId: targetAdminId,
+            clubId: club.id,
+            isAdmin: true
+          }
+        });
+      }
+
       res.json({ club });
     } catch (error) {
       res.status(500).json({ error: 'Failed to create club' });
@@ -2277,11 +3328,36 @@ async function startServer() {
   // --- ADMIN NEWS ---
   app.get('/api/admin/news', requireAdmin, async (req, res) => {
     try {
-      const articles = await prisma.newsArticle.findMany({
-        include: { author: { select: { username: true, name: true } } },
-        orderBy: { createdAt: 'desc' }
-      });
-      res.json({ articles });
+      const page = req.query.page ? parseInt(req.query.page as string) : undefined;
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
+      const search = req.query.search as string || '';
+
+      const where = search ? {
+        OR: [
+          { title: { contains: search } },
+          { body: { contains: search } }
+        ]
+      } : {};
+
+      if (page && limit) {
+        const [articles, total] = await Promise.all([
+          prisma.newsArticle.findMany({
+            where,
+            include: { author: { select: { username: true, name: true } } },
+            orderBy: { createdAt: 'desc' },
+            skip: (page - 1) * limit,
+            take: limit
+          }),
+          prisma.newsArticle.count({ where })
+        ]);
+        res.json({ articles, total, page, totalPages: Math.ceil(total / limit) });
+      } else {
+        const articles = await prisma.newsArticle.findMany({
+          include: { author: { select: { username: true, name: true } } },
+          orderBy: { createdAt: 'desc' }
+        });
+        res.json({ articles });
+      }
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch news articles' });
     }
@@ -2473,7 +3549,7 @@ async function startServer() {
         include: { members: true }
       });
 
-      const currentAdminId = req.user.id;
+      const currentAdminId = req.user.userId;
 
       if (!group) {
         group = await prisma.group.create({
@@ -2698,6 +3774,244 @@ async function startServer() {
   //
   //   archive.finalize();
   // });
+
+  // --- FORMS & APPLICATIONS ---
+  // Create a new form
+  app.post('/api/forms', authenticateToken, async (req: any, res) => {
+    try {
+      const { title, description, entityType, entityId, pages, status, allowMultipleSubmissions, allowResponseEdits } = req.body;
+      const form = await prisma.form.create({
+        data: {
+          title,
+          description,
+          entityType,
+          entityId,
+          status: status || 'DRAFT',
+          allowMultipleSubmissions: allowMultipleSubmissions ?? true,
+          allowResponseEdits: allowResponseEdits ?? true,
+          creatorId: req.user.userId,
+          pages: {
+            create: pages.map((page: any, pIndex: number) => ({
+              title: page.title,
+              description: page.description,
+              order: pIndex,
+              fields: {
+                create: page.fields.map((field: any, fIndex: number) => ({
+                  type: field.type,
+                  question: field.question,
+                  description: field.description,
+                  required: field.required,
+                  options: field.options ? (typeof field.options === 'string' ? field.options : JSON.stringify(field.options)) : null,
+                  order: fIndex
+                }))
+              }
+            }))
+          }
+        },
+        include: {
+          pages: { include: { fields: true } }
+        }
+      });
+      res.json({ form });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to create form' });
+    }
+  });
+
+  // Get forms (optional filter by entity)
+  app.get('/api/forms', authenticateToken, async (req: any, res) => {
+    try {
+      const { entityType, entityId } = req.query;
+      const where: any = {};
+      if (entityType) where.entityType = String(entityType);
+      if (entityId) where.entityId = String(entityId);
+
+      const forms = await prisma.form.findMany({
+        where,
+        include: { 
+          creator: { select: { name: true, username: true } }, 
+          _count: { select: { submissions: true } },
+          submissions: {
+            where: { userId: req.user.userId },
+            select: { id: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json({ forms });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch forms' });
+    }
+  });
+
+  // Get a specific form
+  app.get('/api/forms/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const form = await prisma.form.findUnique({
+        where: { id: req.params.id },
+        include: {
+          pages: {
+            orderBy: { order: 'asc' },
+            include: { fields: { orderBy: { order: 'asc' } } }
+          }
+        }
+      });
+      if (!form) return res.status(404).json({ error: 'Form not found' });
+
+      // Check if user has an existing submission
+      const existingSubmission = await prisma.formSubmission.findFirst({
+        where: { formId: req.params.id, userId: req.user.userId },
+        include: { answers: true }
+      });
+
+      res.json({ form, existingSubmission });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch form' });
+    }
+  });
+
+  // Update form status or metadata
+  app.put('/api/forms/:id', authenticateToken, async (req: any, res) => {
+    try {
+      const { status, title, description, allowMultipleSubmissions, allowResponseEdits, pages } = req.body;
+      const data: any = {};
+      if (status) data.status = status;
+      if (title) data.title = title;
+      if (description !== undefined) data.description = description;
+      if (allowMultipleSubmissions !== undefined) data.allowMultipleSubmissions = allowMultipleSubmissions;
+      if (allowResponseEdits !== undefined) data.allowResponseEdits = allowResponseEdits;
+
+      // If pages are provided, we should probably update them (this is complex, naive delete and recreate)
+      if (pages) {
+        await prisma.formPage.deleteMany({ where: { formId: req.params.id } });
+        data.pages = {
+          create: pages.map((page: any, pIndex: number) => ({
+            title: page.title,
+            description: page.description,
+            order: pIndex,
+            fields: {
+              create: page.fields.map((field: any, fIndex: number) => ({
+                question: field.question,
+                type: field.type,
+                options: field.options ? (typeof field.options === 'string' ? field.options : JSON.stringify(field.options)) : null,
+                required: field.required || false,
+                order: fIndex
+              }))
+            }
+          }))
+        };
+      }
+
+      const form = await prisma.form.update({
+        where: { id: req.params.id },
+        data
+      });
+      res.json({ form });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to update form' });
+    }
+  });
+
+  // Delete form
+  app.delete('/api/forms/:id', authenticateToken, async (req: any, res) => {
+    try {
+      await prisma.form.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete form' });
+    }
+  });
+
+  // Submit a form
+  app.post('/api/forms/:id/submit', authenticateToken, async (req: any, res) => {
+    try {
+      const { answers } = req.body; // Array of { fieldId, value }
+      
+      const form = await prisma.form.findUnique({ where: { id: req.params.id } });
+      if (!form || form.status === 'CLOSED') {
+        return res.status(400).json({ error: 'Form is not open for responses.' });
+      }
+
+      // Check for existing submissions
+      const existingSubmission = await prisma.formSubmission.findFirst({
+        where: { formId: req.params.id, userId: req.user.userId }
+      });
+
+      if (existingSubmission && !form.allowMultipleSubmissions) {
+        if (!form.allowResponseEdits) {
+          return res.status(400).json({ error: 'You have already submitted this form and edits are not allowed.' });
+        }
+        
+        // Update existing submission by replacing answers
+        await prisma.formAnswer.deleteMany({
+          where: { submissionId: existingSubmission.id }
+        });
+        
+        const updatedSubmission = await prisma.formSubmission.update({
+          where: { id: existingSubmission.id },
+          data: {
+            answers: {
+              create: answers.map((a: any) => ({
+                fieldId: a.fieldId,
+                value: typeof a.value === 'object' ? JSON.stringify(a.value) : String(a.value)
+              }))
+            }
+          }
+        });
+        return res.json({ submission: updatedSubmission });
+      }
+
+      const submission = await prisma.formSubmission.create({
+        data: {
+          formId: req.params.id,
+          userId: req.user.userId,
+          answers: {
+            create: answers.map((a: any) => ({
+              fieldId: a.fieldId,
+              value: typeof a.value === 'object' ? JSON.stringify(a.value) : String(a.value)
+            }))
+          }
+        }
+      });
+      res.json({ submission });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to submit form' });
+    }
+  });
+
+  // Get submissions
+  app.get('/api/forms/:id/submissions', authenticateToken, async (req: any, res) => {
+    try {
+      const submissions = await prisma.formSubmission.findMany({
+        where: { formId: req.params.id },
+        include: {
+          user: { select: { name: true, username: true, studentEmail: true, avatarUrl: true } },
+          answers: { include: { field: true } }
+        },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json({ submissions });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch submissions' });
+    }
+  });
+
+  // Update submission status
+  app.put('/api/submissions/:id/status', authenticateToken, async (req: any, res) => {
+    try {
+      const { status } = req.body;
+      const submission = await prisma.formSubmission.update({
+        where: { id: req.params.id },
+        data: { status }
+      });
+      res.json({ submission });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update submission status' });
+    }
+  });
 
   // Catch-all for undefined API routes to prevent falling through to SPA fallback
   app.all('/api/*', (req, res) => {

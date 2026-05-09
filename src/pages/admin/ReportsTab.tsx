@@ -1,3 +1,4 @@
+import { toast } from 'sonner';
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Search, AlertTriangle, CheckCircle2, XCircle, FileText, User as UserIcon, Link as LinkIcon, Edit2, Copy, Inbox, Trash2, MessageSquare, FolderInput, ExternalLink, Clock } from 'lucide-react';
 import { clsx } from 'clsx';
@@ -9,6 +10,10 @@ export default function ReportsTab() {
   const [reports, setReports] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const LIMIT = 20;
   const [viewingProfileId, setViewingProfileId] = useState<string | null>(null);
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
   const [editingNoteContent, setEditingNoteContent] = useState('');
@@ -64,12 +69,12 @@ export default function ReportsTab() {
         return true;
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        alert(`Failed to update report: ${errorData.error || 'Unknown error'}`);
+        toast(`Failed to update report: ${errorData.error || 'Unknown error'}`);
         return false;
       }
     } catch (error) {
       console.error('Failed to update report status', error);
-      alert('Network error while updating report status');
+      toast('Network error while updating report status');
       return false;
     }
   };
@@ -106,7 +111,7 @@ export default function ReportsTab() {
         const data = await res.json();
         navigate(`/messages?id=${data.group.id}`);
       } else {
-        alert('Failed to start a conversation with the reporter.');
+        toast('Failed to start a conversation with the reporter.');
       }
     } catch (e) {
       console.error('Failed to start chat', e);
@@ -128,7 +133,7 @@ export default function ReportsTab() {
       const token = localStorage.getItem('token');
       
       // Destructive actions
-      if (['DELETE_FILE', 'DELETE_CLUB', 'BAN_USER', 'WARNING', 'SUSPEND', 'BAN'].includes(actionType)) {
+      if (['DELETE_FILE', 'DELETE_CLUB', 'BAN_USER', 'WARNING', 'SUSPEND', 'BAN', 'DELETE_MESSAGE'].includes(actionType)) {
         let res;
         const targetUserId = report.reportedId || report.contentId;
 
@@ -176,13 +181,13 @@ export default function ReportsTab() {
         if (res && !res.ok) {
           const errData = await res.json().catch(() => ({}));
           console.error('Action API failed', errData);
-          alert(`Action failed: ${errData.error || 'Unknown error'}`);
+          toast(`Action failed: ${errData.error || 'Unknown error'}`);
           setIsSubmittingAction(false);
           return;
         }
 
         // Auto-resolve for serious actions
-        if (['DELETE_FILE', 'DELETE_CLUB', 'BAN_USER', 'BAN'].includes(actionType)) {
+        if (['DELETE_FILE', 'DELETE_CLUB', 'BAN_USER', 'BAN', 'DELETE_MESSAGE'].includes(actionType)) {
           const updated = await handleUpdateStatus(report.id, 'RESOLVED', undefined, modalReason || `Action taken: ${actionType}`);
           if (updated) {
             setModerationAction(null);
@@ -203,7 +208,7 @@ export default function ReportsTab() {
       }
     } catch (e) {
       console.error('Moderation execution failed', e);
-      alert('An unexpected error occurred during moderation.');
+      toast('An unexpected error occurred during moderation.');
     } finally {
       setIsSubmittingAction(false);
     }
@@ -233,7 +238,7 @@ export default function ReportsTab() {
         <p className="text-neutral-400">Review and resolve user reports.</p>
       </div>
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
+      <div className="border border-neutral-800 bg-neutral-950/40 rounded-xl overflow-hidden">
         <div className="p-4 border-b border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div className="relative flex-1 w-full max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
@@ -242,7 +247,7 @@ export default function ReportsTab() {
               placeholder="Search reports by reason..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 bg-neutral-950 border border-neutral-800 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm text-white focus:outline-none focus:border-primary-500 transition-colors"
             />
           </div>
           <div className="flex gap-2">
@@ -251,7 +256,7 @@ export default function ReportsTab() {
                 key={tab}
                 onClick={() => setActiveTab(tab)}
                 className={clsx(
-                  "flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors border",
+                  "flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg transition-colors border border-neutral-800",
                   activeTab === tab 
                     ? "bg-primary-500/10 text-primary-400 border-primary-500/20" 
                     : "bg-neutral-800 text-neutral-400 border-neutral-700 hover:text-neutral-300"
@@ -268,9 +273,18 @@ export default function ReportsTab() {
 
         <div className="p-6 overflow-y-auto max-h-[800px] custom-scrollbar bg-neutral-950/50">
            {(isLoading && reports.length === 0) ? (
-             <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
-               <div className="w-8 h-8 rounded-full border-2 border-primary-500 border-t-transparent animate-spin mb-4" />
-               <p>Loading reports...</p>
+             <div className="grid gap-6">
+                {[...Array(3)].map((_, i) => (
+                  <div key={i} className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-lg p-5">
+                    <div className="flex gap-4 items-center mb-4">
+                      <div className="w-10 h-10 bg-neutral-800 rounded-full animate-pulse" />
+                      <div className="flex flex-col gap-2 flex-grow">
+                        <div className="w-1/4 h-3 bg-neutral-800 rounded animate-pulse" />
+                        <div className="w-1/3 h-3 bg-neutral-800 rounded animate-pulse" />
+                      </div>
+                    </div>
+                  </div>
+                ))}
              </div>
            ) : filteredReports.length === 0 ? (
              <div className="flex flex-col items-center justify-center py-20 text-neutral-500">
@@ -279,7 +293,7 @@ export default function ReportsTab() {
              </div>
            ) : (
              <div className="grid gap-6">
-               {filteredReports.map((report) => (
+               {reports.map((report) => (
                  <div key={report.id} className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden shadow-lg flex flex-col">
                    <div className="flex items-center justify-between px-5 py-3 border-b border-neutral-800 bg-neutral-900/80">
                      <div className="flex items-center gap-3">
@@ -510,7 +524,7 @@ export default function ReportsTab() {
                                  <span>Author:</span>
                                  <div className="flex items-center gap-1">
                                    {report.adminNoteAuthor.avatarUrl ? (
-                                      <img src={report.adminNoteAuthor.avatarUrl} alt="" className="w-3.5 h-3.5 rounded-full" />
+                                      <img referrerPolicy="no-referrer" src={report.adminNoteAuthor.avatarUrl} alt="" className="w-3.5 h-3.5 rounded-full" />
                                    ) : (
                                       <div className="w-3.5 h-3.5 rounded-full bg-neutral-800 flex items-center justify-center">
                                         <UserIcon className="w-2.5 h-2.5 text-neutral-400" />

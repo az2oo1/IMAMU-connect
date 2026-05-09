@@ -122,7 +122,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                     type="text"
                     value={formData.username}
                     onChange={(e) => setFormData({...formData, username: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                     required
                   />
                 </div>
@@ -132,7 +132,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                     type="text"
                     value={formData.name}
                     onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                   />
                 </div>
                 <div>
@@ -141,7 +141,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                     type="email"
                     value={formData.studentEmail}
                     onChange={(e) => setFormData({...formData, studentEmail: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                   />
                 </div>
                 <div>
@@ -150,7 +150,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                     type="email"
                     value={formData.googleEmail}
                     onChange={(e) => setFormData({...formData, googleEmail: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                   />
                 </div>
                 <div className="md:col-span-2">
@@ -158,7 +158,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                   <textarea
                     value={formData.bio}
                     onChange={(e) => setFormData({...formData, bio: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px] resize-y"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px] resize-y"
                   />
                 </div>
                 <div>
@@ -167,7 +167,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                     type="password"
                     value={formData.password}
                     onChange={(e) => setFormData({...formData, password: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                     placeholder="••••••••"
                   />
                 </div>
@@ -176,14 +176,14 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
                   <select
                     value={formData.role}
                     onChange={(e) => setFormData({...formData, role: e.target.value})}
-                    className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
                   >
                     <option value="USER">USER</option>
                     <option value="NEWS_WRITER">NEWS_WRITER</option>
                     <option value="ADMIN">ADMIN</option>
                   </select>
                 </div>
-                <div className="md:col-span-2 flex items-center gap-3 p-4 bg-neutral-950 border border-neutral-800 rounded-xl">
+                <div className="md:col-span-2 flex items-center gap-3 p-4 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm">
                   <input
                     type="checkbox"
                     id="isBanned"

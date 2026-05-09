@@ -1,4 +1,6 @@
+import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
+import AdminPagination from '../../components/AdminPagination';
 import { Search, Plus, Trash2, Edit2, Users } from 'lucide-react';
 import EditCourseModal from './EditCourseModal';
 import CourseUsersModal from './CourseUsersModal';
@@ -8,6 +10,10 @@ export default function CoursesTab() {
   const [courses, setCourses] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+  const LIMIT = 20;
   const [isCreating, setIsCreating] = useState(false);
   const [newCourseName, setNewCourseName] = useState('');
   const [newCourseCode, setNewCourseCode] = useState('');
@@ -15,25 +21,39 @@ export default function CoursesTab() {
   const [editingCourse, setEditingCourse] = useState<any>(null);
   const [viewingUsersCourse, setViewingUsersCourse] = useState<any>(null);
 
-  const fetchCourses = async () => {
+  const fetchCourses = async (currentSearch = searchQuery, currentPage = page) => {
     try {
-      const res = await fetch('/api/admin/courses', {
+      setIsLoading(true);
+      const res = await fetch(`/api/admin/courses?page=${currentPage}&limit=${LIMIT}&search=${encodeURIComponent(currentSearch)}`, {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (res.ok) {
         const data = await res.json();
         setCourses(data.courses);
+        if (data.totalPages) {
+          setTotalPages(data.totalPages);
+          setTotalItems(data.total);
+        }
       }
     } catch (error) {
-      console.error('Failed to fetch courses', error);
+      console.error('Failed to fetch', error);
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchCourses();
-  }, []);
+    fetchCourses(searchQuery, page);
+  }, [page]);
+  
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (page !== 1) setPage(1);
+      else fetchCourses();
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,11 +93,7 @@ export default function CoursesTab() {
     }
   };
 
-  const filteredCourses = courses.filter(course => 
-    course?.name?.toLowerCase().includes(searchQuery?.toLowerCase() || '') ||
-    course?.code?.toLowerCase().includes(searchQuery?.toLowerCase() || '')
-  );
-
+  
   return (
     <div className="p-8 max-w-7xl mx-auto">
       <div className="flex items-center justify-between mb-8">
@@ -95,7 +111,7 @@ export default function CoursesTab() {
       </div>
 
       {isCreating && (
-        <div className="mb-8 bg-neutral-900 border border-neutral-800 rounded-2xl p-6 shadow-xl">
+        <div className="mb-8 border border-neutral-800 bg-neutral-950/40 rounded-xl p-6">
           <h3 className="text-lg font-bold text-white mb-4">Create New Course</h3>
           <form onSubmit={handleCreateCourse} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -105,7 +121,7 @@ export default function CoursesTab() {
                   type="text"
                   value={newCourseCode}
                   onChange={(e) => setNewCourseCode(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-primary-500"
+                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2 text-white focus:outline-none focus:border-primary-500"
                   placeholder="e.g. CS101"
                   required
                 />
@@ -116,7 +132,7 @@ export default function CoursesTab() {
                   type="text"
                   value={newCourseName}
                   onChange={(e) => setNewCourseName(e.target.value)}
-                  className="w-full bg-neutral-950 border border-neutral-800 rounded-xl px-4 py-2 text-white focus:outline-none focus:border-primary-500"
+                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2 text-white focus:outline-none focus:border-primary-500"
                   placeholder="e.g. Introduction to Computer Science"
                   required
                 />
@@ -149,8 +165,8 @@ export default function CoursesTab() {
         </div>
       )}
 
-      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl overflow-hidden shadow-xl">
-        <div className="p-4 border-b border-neutral-800 flex items-center gap-4">
+      <div className="border border-neutral-800 bg-neutral-950/40 rounded-xl overflow-hidden">
+        <div className="p-3 border-b border-neutral-800 flex items-center gap-3 bg-neutral-900/20">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-500" />
             <input 
@@ -158,7 +174,7 @@ export default function CoursesTab() {
               placeholder="Search courses..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-neutral-950 border border-neutral-800 rounded-xl text-white focus:outline-none focus:border-primary-500 transition-colors"
+              className="w-full pl-10 pr-4 py-2.5 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm text-white focus:outline-none focus:border-primary-500 transition-colors"
             />
           </div>
         </div>
@@ -166,7 +182,7 @@ export default function CoursesTab() {
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-neutral-800 bg-neutral-950/50">
+              <tr className="border-b border-neutral-800 bg-neutral-900/40 text-xs uppercase tracking-wider text-neutral-500">
                 <th className="p-4 text-sm font-medium text-neutral-400">Code</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Name</th>
                 <th className="p-4 text-sm font-medium text-neutral-400">Tags</th>
@@ -175,14 +191,12 @@ export default function CoursesTab() {
             </thead>
             <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={4} className="p-8 text-center text-neutral-500">Loading courses...</td>
-                </tr>
-              ) : filteredCourses.length === 0 ? (
+                <TableSkeleton />
+              ) : courses.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="p-8 text-center text-neutral-500">No courses found.</td>
                 </tr>
-              ) : filteredCourses.map((course) => (
+              ) : courses.map((course) => (
                 <tr key={course.id} className="border-b border-neutral-800 hover:bg-neutral-800/30 transition-colors">
                   <td className="p-4 font-medium text-white">{course.code}</td>
                   <td className="p-4 text-neutral-300">{course.name}</td>
@@ -215,6 +229,15 @@ export default function CoursesTab() {
             </tbody>
           </table>
         </div>
+
+        <AdminPagination 
+          currentPage={page} 
+          totalPages={totalPages} 
+          totalItems={totalItems} 
+          itemsPerPage={LIMIT} 
+          onPageChange={setPage} 
+        />
+  
       </div>
 
       {editingCourse && (
