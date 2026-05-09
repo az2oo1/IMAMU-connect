@@ -65,7 +65,7 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
       }).catch(console.error);
     } else {
       navigator.clipboard.writeText(shareUrl);
-      toast('Link copied to clipboard!');
+      toast.success('Link copied to clipboard!');
     }
   };
 
@@ -83,7 +83,7 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
         setIsSaved(data.saved);
         if (article) article.isSaved = data.saved;
       } else {
-        toast('Please log in to save articles.');
+        toast.error('Please log in to save articles.');
       }
     } catch (e) {
       console.error(e);

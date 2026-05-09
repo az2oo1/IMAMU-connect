@@ -58,7 +58,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
         throw new Error('Upload failed');
       }
     } catch (err: any) {
-      toast(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -156,8 +156,10 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
       });
 
       if (!res.ok) throw new Error('Failed to update club');
+      toast.success('Club updated successfully');
       onUpdate();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     } finally {
       setIsLoading(false);

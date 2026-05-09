@@ -98,10 +98,10 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
        }).catch(console.error);
 
        if(res.ok) {
-          toast('Warning sent to user.');
+          toast.success('Warning sent to user.');
           fetchProfile();
        } else {
-         toast('Failed to send warning.');
+         toast.error('Failed to send warning.');
        }
     } catch(e) {
        console.error(e);
@@ -123,7 +123,7 @@ export default function AdminUserProfileModal({ userId, onClose }: AdminUserProf
         onClose();
         navigate(`/messages?id=${data.group.id}`);
       } else {
-        toast('Failed to start a conversation with this user');
+        toast.error('Failed to start a conversation with this user');
       }
     } catch (e) {
       console.error('Failed to start chat', e);

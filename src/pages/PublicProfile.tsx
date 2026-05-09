@@ -34,6 +34,7 @@ export default function PublicProfile() {
   const [followersCount, setFollowersCount] = useState(0);
   const [isFollowModalOpen, setIsFollowModalOpen] = useState(false);
   const [followModalTab, setFollowModalTab] = useState<'followers' | 'following'>('followers');
+  const [activeTab, setActiveTab] = useState<'posts' | 'news'>('posts');
 
   useEffect(() => {
     // If viewing own profile, redirect to /personal
@@ -57,6 +58,9 @@ export default function PublicProfile() {
         setProfile(data.user);
         setIsFollowing(data.user.isFollowing || false);
         setFollowersCount(data.user._count?.followers || 0);
+        if (data.user.role === 'NEWS_WRITER' || data.user.role === 'ADMIN') {
+          setActiveTab('news');
+        }
       } catch (err) {
         setError('User not found');
       } finally {
@@ -102,10 +106,8 @@ export default function PublicProfile() {
   }
 
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex-1 h-full overflow-y-auto custom-scrollbar relative"
+    <div 
+      className="flex-1 h-full overflow-y-auto custom-scrollbar bg-neutral-950 relative"
     >
       <button 
         onClick={() => navigate(-1)}
@@ -190,13 +192,36 @@ export default function PublicProfile() {
           </div>
         </div>
 
-        {/* Articles Section */}
-        {(profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') ? (
-          <div>
-            <h3 className="text-xl font-bold text-white mb-6">Articles</h3>
+        <div className="flex border-b border-neutral-800 mb-8 relative">
+          <button
+            onClick={() => setActiveTab('posts')}
+            className={`flex-1 py-4 text-sm font-medium transition-colors relative ${activeTab === 'posts' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+          >
+            Posts
+            {activeTab === 'posts' && (
+              <motion.div layoutId="public_profile_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+            )}
+          </button>
+          {(profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') && (
+            <button
+              onClick={() => setActiveTab('news')}
+              className={`flex-1 py-4 text-sm font-medium transition-colors relative ${activeTab === 'news' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+            >
+              Articles
+              {activeTab === 'news' && (
+                <motion.div layoutId="public_profile_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {activeTab === 'news' && (profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') && (
+          <div className="mt-8">
             <ProfileArticlesList profileUserId={profile.id} currentUserId={currentUser?.id} />
           </div>
-        ) : (
+        )}
+
+        {activeTab === 'posts' && (
           <div className="text-center py-20 bg-neutral-900/30 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
             <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-500/20">
               <Compass className="w-8 h-8 text-primary-400" />
@@ -215,6 +240,6 @@ export default function PublicProfile() {
         username={profile.username}
         initialTab={followModalTab}
       />
-    </motion.div>
+    </div>
   );
 }

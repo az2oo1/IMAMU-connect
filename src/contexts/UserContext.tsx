@@ -26,7 +26,7 @@ interface UserContextType {
   isAuthenticated: boolean;
   user: User | null;
   login: (username: string, pass: string) => Promise<any>;
-  register: (username: string, pass: string, email?: string) => Promise<void>;
+  register: (username: string, pass: string, studentEmail?: string, googleEmail?: string) => Promise<void>;
   logout: () => void;
   updateProfile: (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string }) => Promise<void>;
   uploadImage: (file: File, type: 'avatar' | 'banner') => Promise<void>;
@@ -95,11 +95,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return data.user;
   };
 
-  const register = async (username: string, pass: string, email?: string) => {
+  const register = async (username: string, pass: string, studentEmail?: string, googleEmail?: string) => {
     const res = await fetch('/api/auth/register', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password: pass, email })
+      body: JSON.stringify({ username, password: pass, studentEmail, googleEmail })
     });
     
     if (!res.ok) {

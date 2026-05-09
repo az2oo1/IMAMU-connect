@@ -126,7 +126,7 @@ export default function FormViewer({ formId, onComplete, onCancel }: { formId: s
         setTimeout(onComplete, 3000);
       }
     } catch (err: any) {
-      toast(err.message);
+      toast.error(err.message);
     } finally {
       setIsSubmitting(false);
     }
@@ -326,7 +326,7 @@ export default function FormViewer({ formId, onComplete, onCancel }: { formId: s
                                       const data = await res.json();
                                       handleAnswer(field.id, data.url);
                                     } else {
-                                      toast("File upload failed");
+                                      toast.error("File upload failed");
                                     }
                                   }
                                 }} />

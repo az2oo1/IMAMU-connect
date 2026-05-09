@@ -7,6 +7,8 @@ import { useUser } from '../contexts/UserContext';
 import { getIconForUrl, getPlatformName } from '../utils/linkHelpers';
 import ProfileArticlesList from '../components/ProfileArticlesList';
 import FollowListModal from '../components/FollowListModal';
+import { toast } from 'sonner';
+
 export default function PersonalTab() {
   const { user, updateProfile, uploadImage } = useUser();
   const [activeTab, setActiveTab] = useState<'posts' | 'saved' | 'news'>('posts');
@@ -29,9 +31,11 @@ export default function PersonalTab() {
         bio: editBio,
         links: editLinks.filter(l => l.trim() !== '')
       });
+      toast.success("Profile updated successfully!");
       setIsEditModalOpen(false);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Failed to update profile", error);
+      toast.error(`Failed to update profile: ${error.message || error}`);
     } finally {
       setSaving(false);
     }
@@ -41,12 +45,10 @@ export default function PersonalTab() {
     if (!file) return;
     try {
       await uploadImage(file, type);
-      setUploadMessage(`${type === 'avatar' ? 'Profile picture' : 'Banner'} uploaded successfully!`);
-      setTimeout(() => setUploadMessage(null), 3000);
-    } catch (error) {
+      toast.success(`${type === 'avatar' ? 'Profile picture' : 'Banner'} uploaded successfully!`);
+    } catch (error: any) {
       console.error(`Failed to upload ${type}`, error);
-      setUploadMessage(`Failed to upload ${type}.`);
-      setTimeout(() => setUploadMessage(null), 3000);
+      toast.error(`Failed to upload ${type}: ${error.message || error}`);
     }
   };
   if (!user) {
@@ -57,23 +59,9 @@ export default function PersonalTab() {
     );
   }
   return (
-    <motion.div 
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      className="flex-1 h-full overflow-y-auto custom-scrollbar relative"
+    <div 
+      className="flex-1 h-full overflow-y-auto custom-scrollbar bg-neutral-950 relative"
     >
-      <AnimatePresence>
-        {uploadMessage && (
-          <motion.div
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-neutral-800 text-white px-4 py-2 rounded-lg shadow-lg border border-neutral-700"
-          >
-            {uploadMessage}
-          </motion.div>
-        )}
-      </AnimatePresence>
       {/* Cover Photo */}
       <div className="h-48 md:h-64 bg-neutral-900 relative group cursor-pointer overflow-hidden" onClick={() => bannerInputRef.current?.click()}>
         <OptimizedImage 
@@ -153,25 +141,31 @@ export default function PersonalTab() {
             )}
           </div>
         </div>
-        <div className="flex border-b border-neutral-800 mb-8">
+        <div className="flex border-b border-neutral-800 mb-8 relative">
           <button
             onClick={() => setActiveTab('posts')}
             className={clsx(
-              "flex-1 py-4 text-sm font-medium transition-colors border-b-2",
-              activeTab === 'posts' ? "border-primary-500 text-primary-400" : "border-transparent text-neutral-500 hover:text-neutral-300"
+              "flex-1 py-4 text-sm font-medium transition-colors relative",
+              activeTab === 'posts' ? "text-white" : "text-neutral-500 hover:text-neutral-300"
             )}
           >
             Posts
+            {activeTab === 'posts' && (
+              <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+            )}
           </button>
           {(user.role === 'NEWS_WRITER' || user.role === 'ADMIN') && (
             <button
               onClick={() => setActiveTab('news')}
               className={clsx(
-                "flex-1 py-4 text-sm font-medium transition-colors border-b-2",
-                activeTab === 'news' ? "border-primary-500 text-primary-400" : "border-transparent text-neutral-500 hover:text-neutral-300"
+                "flex-1 py-4 text-sm font-medium transition-colors relative",
+                activeTab === 'news' ? "text-white" : "text-neutral-500 hover:text-neutral-300"
               )}
             >
               Articles
+              {activeTab === 'news' && (
+                <div className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+              )}
             </button>
           )}
         </div>
@@ -299,6 +293,6 @@ export default function PersonalTab() {
         username={user.username}
         initialTab={followModalTab}
       />
-    </motion.div>
+    </div>
   );
 }

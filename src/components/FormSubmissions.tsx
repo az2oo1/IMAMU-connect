@@ -92,7 +92,7 @@ export default function FormSubmissions({ formId }: { formId: string }) {
     if (filterStatus !== 'ALL' && sub.status !== filterStatus) return false;
     
     // Check multiple choice filters
-    for (const [fieldId, selectedValues] of Object.entries(answerFilters)) {
+    for (const [fieldId, selectedValues] of Object.entries(answerFilters) as [string, string[]][]) {
       if (selectedValues.length === 0) continue;
       
       const fieldAns = sub.answers?.find((a:any) => a.fieldId === fieldId);

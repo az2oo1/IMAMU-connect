@@ -114,6 +114,7 @@ function OrgTree({
   maxDepth,
   activeMemberId
 }: { 
+  key?: React.Key,
   nodeId: string, 
   membersByManager: Record<string, ClubMember[]>, 
   membersMap: Record<string, ClubMember>,
@@ -359,7 +360,7 @@ export default function ClubHierarchy({
         setMembers(members.filter(m => m.id !== selectedMemberForModal.id));
         setSelectedMemberForModal(null);
       } else {
-        toast('Failed to remove member');
+        toast.error('Failed to remove member');
       }
     } catch (err) {
       console.error(err);
@@ -373,7 +374,7 @@ export default function ClubHierarchy({
       let currentManager = membersMap[managerId]?.managerId;
       while (currentManager) {
         if (currentManager === selectedMemberForModal.id) {
-          toast('Cannot create a circular management hierarchy.');
+          toast.error('Cannot create a circular management hierarchy.');
           return;
         }
         currentManager = membersMap[currentManager]?.managerId;
@@ -396,11 +397,11 @@ export default function ClubHierarchy({
         setMembers(members.map(m => m.id === selectedMemberForModal.id ? { ...m, managerId, roleTitle: managerId === null && !m.isAdmin ? '' : m.roleTitle } : m));
         setSelectedMemberForModal({ ...selectedMemberForModal, managerId, roleTitle: managerId === null && !selectedMemberForModal.isAdmin ? '' : selectedMemberForModal.roleTitle });
       } else {
-        toast('Failed to update role hierarchy');
+        toast.error('Failed to update role hierarchy');
       }
     } catch (error) {
       console.error(error);
-      toast('Error updating role');
+      toast.error('Error updating role');
     }
   };
 
@@ -445,7 +446,7 @@ export default function ClubHierarchy({
       let currentManager = membersMap[newManagerId]?.managerId;
       while (currentManager) {
         if (currentManager === draggableMemberId) {
-          toast('Cannot create a circular management hierarchy.');
+          toast.error('Cannot create a circular management hierarchy.');
           return;
         }
         currentManager = membersMap[currentManager]?.managerId;
@@ -470,11 +471,11 @@ export default function ClubHierarchy({
       if (res.ok) {
         setMembers(members.map(m => m.id === draggableMemberId ? { ...m, ...bodyPayload } : m));
       } else {
-        toast('Failed to update role hierarchy');
+        toast.error('Failed to update role hierarchy');
       }
     } catch (error) {
       console.error(error);
-      toast('Error updating role');
+      toast.error('Error updating role');
     }
   };
 
@@ -750,6 +751,7 @@ function ChildNode({
   maxDepth,
   activeMemberId
 }: { 
+  key?: React.Key,
   child: ClubMember,
   membersByManager: Record<string, ClubMember[]>, 
   membersMap: Record<string, ClubMember>, 
@@ -857,7 +859,7 @@ function ChildNode({
   );
 }
 
-function UnassignedMemberNode({ member, isReadOnly, onMemberClick }: { member: ClubMember, isReadOnly?: boolean, onMemberClick: (member: ClubMember) => void }) {
+function UnassignedMemberNode({ member, isReadOnly, onMemberClick }: { key?: React.Key, member: ClubMember, isReadOnly?: boolean, onMemberClick: (member: ClubMember) => void }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: member.id,
     data: { member },

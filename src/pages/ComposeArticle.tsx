@@ -103,11 +103,13 @@ export default function ComposeArticle() {
           isArchived
         })
       });
+      if (!res.ok) throw new Error('Failed to save article');
       if (res.ok) {
+        toast.success(editId ? 'Article updated successfully!' : 'Article published successfully!');
         navigate(authorType === 'club' ? `/clubs/${authorClubId}` : `/profile/${user?.username}`);
       }
     } catch (err: any) {
-      toast(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -132,9 +134,10 @@ export default function ComposeArticle() {
       }
       if (urls.length) {
         setNewsImages(prev => [...prev, ...urls]);
+        toast.success('Images uploaded successfully!');
       }
     } catch (err) {
-      toast('Upload failed');
+      toast.error('Upload failed');
     } finally {
       setIsUploading(false);
     }

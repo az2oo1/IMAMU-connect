@@ -82,7 +82,7 @@ export default function FormBuilder({ entityType, entityId, onSave, initialForm 
 
   const handleSave = async () => {
     if (!title.trim()) {
-      toast("Form title is required");
+      toast.error("Form title is required");
       return;
     }
     
@@ -122,7 +122,7 @@ export default function FormBuilder({ entityType, entityId, onSave, initialForm 
       }]);
     } catch (err) {
       console.error(err);
-      toast("Error saving form.");
+      toast.error("Error saving form.");
     } finally {
       setIsSaving(false);
     }

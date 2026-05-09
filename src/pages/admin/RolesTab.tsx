@@ -35,7 +35,7 @@ interface User {
   orgTitle: string | null;
 }
 
-function UserNode({ user, isOverlay = false }: { user: User, isOverlay?: boolean }) {
+function UserNode({ user, isOverlay = false }: { key?: React.Key, user: User, isOverlay?: boolean }) {
   const { attributes, listeners, setNodeRef: setDraggableRef, transform, isDragging } = useDraggable({
     id: user.id,
     data: { user },
@@ -93,6 +93,7 @@ function OrgTree({
   usersMap, 
   onUserClick 
 }: { 
+  key?: React.Key,
   nodeId: string, 
   usersByManager: Record<string, User[]>, 
   usersMap: Record<string, User>,
@@ -259,7 +260,7 @@ export default function RolesTab() {
       let currentManager = usersMap[newManagerId]?.managerId;
       while (currentManager) {
         if (currentManager === draggableUserId) {
-          toast('Cannot create a circular management hierarchy.');
+          toast.error('Cannot create a circular management hierarchy.');
           return;
         }
         currentManager = usersMap[currentManager]?.managerId;
@@ -280,11 +281,11 @@ export default function RolesTab() {
       if (res.ok) {
         setUsers(users.map(u => u.id === draggableUserId ? { ...u, managerId: newManagerId } : u));
       } else {
-        toast('Failed to update role hierarchy');
+        toast.error('Failed to update role hierarchy');
       }
     } catch (error) {
       console.error(error);
-      toast('Error updating role');
+      toast.error('Error updating role');
     }
   };
 

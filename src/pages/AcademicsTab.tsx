@@ -565,7 +565,7 @@ export default function AcademicsTab() {
       }, 800);
     } catch (error) {
       console.error('Upload failed', error);
-      toast('Upload failed. Please check your network or try again.');
+      toast.error('Upload failed. Please check your network or try again.');
     } finally {
       setIsUploading(false);
     }

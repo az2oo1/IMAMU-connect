@@ -41,22 +41,27 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       root.style.setProperty('--theme-h', hue.toString());
       root.style.setProperty('--theme-s', '80%');
       root.style.setProperty('--theme-l', '50%');
-    } else if (colorPreset === 'white') {
-      root.style.setProperty('--theme-h', '0');
-      root.style.setProperty('--theme-s', '0%');
-      root.style.setProperty('--theme-l', '95%');
-    } else if (colorPreset === 'gray') {
-      root.style.setProperty('--theme-h', '0');
-      root.style.setProperty('--theme-s', '0%');
+    } else if (colorPreset === 'rose') {
+      root.style.setProperty('--theme-h', '340');
+      root.style.setProperty('--theme-s', '80%');
+      root.style.setProperty('--theme-l', '50%');
+    } else if (colorPreset === 'amber') {
+      root.style.setProperty('--theme-h', '40');
+      root.style.setProperty('--theme-s', '90%');
       root.style.setProperty('--theme-l', '50%');
     } else if (colorPreset === 'blue') {
       root.style.setProperty('--theme-h', '210');
       root.style.setProperty('--theme-s', '100%');
       root.style.setProperty('--theme-l', '50%');
-    } else if (colorPreset === 'emerald') {
-      root.style.setProperty('--theme-h', '150');
+    } else if (colorPreset === 'green') {
+      root.style.setProperty('--theme-h', '140');
       root.style.setProperty('--theme-s', '80%');
       root.style.setProperty('--theme-l', '40%');
+    } else {
+      // primary / default fallback
+      root.style.setProperty('--theme-h', '250');
+      root.style.setProperty('--theme-s', '80%');
+      root.style.setProperty('--theme-l', '50%');
     }
 
     localStorage.setItem('theme_hue', hue.toString());

@@ -69,12 +69,12 @@ export default function ReportsTab() {
         return true;
       } else {
         const errorData = await res.json().catch(() => ({ error: 'Unknown error' }));
-        toast(`Failed to update report: ${errorData.error || 'Unknown error'}`);
+        toast.error(`Failed to update report: ${errorData.error || 'Unknown error'}`);
         return false;
       }
     } catch (error) {
       console.error('Failed to update report status', error);
-      toast('Network error while updating report status');
+      toast.error('Network error while updating report status');
       return false;
     }
   };
@@ -111,7 +111,7 @@ export default function ReportsTab() {
         const data = await res.json();
         navigate(`/messages?id=${data.group.id}`);
       } else {
-        toast('Failed to start a conversation with the reporter.');
+        toast.error('Failed to start a conversation with the reporter.');
       }
     } catch (e) {
       console.error('Failed to start chat', e);
@@ -181,7 +181,7 @@ export default function ReportsTab() {
         if (res && !res.ok) {
           const errData = await res.json().catch(() => ({}));
           console.error('Action API failed', errData);
-          toast(`Action failed: ${errData.error || 'Unknown error'}`);
+          toast.error(`Action failed: ${errData.error || 'Unknown error'}`);
           setIsSubmittingAction(false);
           return;
         }
@@ -208,7 +208,7 @@ export default function ReportsTab() {
       }
     } catch (e) {
       console.error('Moderation execution failed', e);
-      toast('An unexpected error occurred during moderation.');
+      toast.error('An unexpected error occurred during moderation.');
     } finally {
       setIsSubmittingAction(false);
     }

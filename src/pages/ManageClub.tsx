@@ -209,7 +209,7 @@ export default function ManageClub() {
       if (type === 'avatar') setAvatarUrl(url);
       if (type === 'banner') setBannerUrl(url);
     } catch (err: any) {
-      toast(typeof err === 'string' ? err : 'Upload failed');
+      toast.error(typeof err === 'string' ? err : 'Upload failed');
     } finally {
       setIsUploading(false);
       setUploadProgress({});
@@ -294,18 +294,18 @@ export default function ManageClub() {
         body: JSON.stringify({ userId })
       });
       if (res.ok) {
-        toast('User invited successfully!');
+        toast.success('User invited successfully!');
         fetchClubData();
         setShowInviteModal(false);
         setInviteSearchQuery('');
         setInviteSearchResults([]);
       } else {
         const errorData = await res.json();
-        toast(errorData.error || 'Failed to invite user');
+        toast.error(errorData.error || 'Failed to invite user');
       }
     } catch (err) {
       console.error(err);
-      toast('Error inviting user');
+      toast.error('Error inviting user');
     }
   };
 
@@ -330,9 +330,10 @@ export default function ManageClub() {
       });
 
       if (!res.ok) throw new Error('Failed to update club details');
-      toast('Club details updated successfully!');
+      toast.success('Club details updated successfully!');
       fetchClubData();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     }
   };
@@ -362,9 +363,10 @@ export default function ManageClub() {
       if (newsEditorRef.current) newsEditorRef.current.setContent('');
       setNewsImages([]);
       setNewsTag('');
-      toast(`News posted successfully!`);
+      toast.success(`News posted successfully!`);
       fetchClubData();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     }
   };
@@ -391,7 +393,7 @@ export default function ManageClub() {
       setEditingArticle(null);
       fetchClubData();
     } catch (err: any) {
-      toast(err.message);
+      toast.error(err.message);
     }
   };
 
@@ -434,8 +436,10 @@ export default function ManageClub() {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (!res.ok) throw new Error('Failed to delete article');
+      toast.success('Article deleted successfully');
       fetchClubData();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     }
   };
@@ -448,8 +452,10 @@ export default function ManageClub() {
         headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
       });
       if (!res.ok) throw new Error('Failed to remove member');
+      toast.success('Member removed successfully');
       fetchClubData();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     }
   };
@@ -467,11 +473,13 @@ export default function ManageClub() {
         body: JSON.stringify({ name: roleName, permissions: rolePerms })
       });
       if (!res.ok) throw new Error('Failed to save role');
+      toast.success(editingRole ? 'Role updated successfully' : 'Role created successfully');
       setEditingRole(null);
       setRoleName('');
       setRolePerms([]);
       fetchClubData();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     }
   };

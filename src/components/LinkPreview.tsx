@@ -5,7 +5,7 @@ import NewsArticleModal from './NewsArticleModal';
 
 const linkPreviewCache: Record<string, any> = {};
 
-export default function LinkPreview({ url }: { url: string }) {
+export default function LinkPreview({ url }: { key?: React.Key, url: string }) {
   const [data, setData] = useState<any>(linkPreviewCache[url] || null);
   const [loading, setLoading] = useState(!linkPreviewCache[url]);
   const [showArticleModal, setShowArticleModal] = useState(false);

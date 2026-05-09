@@ -76,31 +76,58 @@ export default function ClubDetails() {
 
   if (isLoading) {
     return (
-      <div className="flex-1 bg-neutral-950 min-h-screen pb-24 md:pb-0">
-        <div className="w-full h-48 md:h-64 bg-neutral-900 border-b border-neutral-800 animate-pulse" />
-        
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-16 md:-mt-20 relative z-10 flex flex-col md:flex-row gap-6 items-start">
-          <div className="w-32 h-32 md:w-40 md:h-40 rounded-3xl bg-neutral-800 border-4 border-neutral-950 animate-pulse shrink-0" />
-          
-          <div className="flex-1 flex flex-col mt-4 md:mt-20 w-full">
-            <div className="h-10 bg-neutral-800 rounded-xl w-3/4 md:w-1/2 mb-3 animate-pulse" />
-            <div className="h-5 bg-neutral-800 rounded-lg w-full mb-2 animate-pulse" />
-            <div className="h-5 bg-neutral-800 rounded-lg w-2/3 mb-6 animate-pulse" />
-            
-            <div className="flex gap-4">
-              <div className="h-12 bg-neutral-800 rounded-xl w-32 animate-pulse" />
-              <div className="h-12 bg-neutral-800 rounded-xl w-32 animate-pulse" />
+      <div className="flex-1 bg-neutral-950 h-full overflow-y-auto relative">
+        {/* Header Image Skeleton */}
+        <div className="relative h-64 md:h-80 shrink-0 bg-neutral-900 border-b border-neutral-800 animate-shimmer">
+          <div className="absolute bottom-8 left-6 right-6 max-w-6xl mx-auto flex items-end justify-between">
+            <div className="flex items-end gap-6">
+              <div className="w-24 h-24 rounded-3xl border-4 border-neutral-950 bg-neutral-800 shrink-0 hidden md:block" />
+              <div>
+                <div className="h-10 bg-neutral-800 w-48 md:w-64 rounded-xl mb-3" />
+                <div className="h-5 bg-neutral-800 w-24 md:w-32 rounded-lg" />
+              </div>
+            </div>
+            <div className="hidden md:flex items-center gap-3">
+              <div className="h-12 w-32 bg-neutral-800 rounded-xl" />
             </div>
           </div>
         </div>
         
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-12 grid grid-cols-1 lg:grid-cols-3 gap-8">
-          <div className="lg:col-span-2 space-y-6">
-            <div className="h-64 bg-neutral-900 border border-neutral-800 rounded-3xl animate-pulse" />
-            <div className="h-64 bg-neutral-900 border border-neutral-800 rounded-3xl animate-pulse" />
+        <div className="max-w-6xl mx-auto p-6 md:p-8 space-y-12">
+          {/* Mobile Logo & Join Button Skeleton */}
+          <div className="md:hidden flex flex-col items-center gap-6 -mt-16 relative z-10">
+            <div className="w-24 h-24 rounded-3xl border-4 border-neutral-950 bg-neutral-800 shrink-0 animate-shimmer" />
+            <div className="w-full flex gap-3">
+              <div className="flex-1 h-12 bg-neutral-800 rounded-xl animate-shimmer" />
+            </div>
           </div>
-          <div className="space-y-6">
-            <div className="h-80 bg-neutral-900 border border-neutral-800 rounded-3xl animate-pulse" />
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
+            <div className="md:col-span-1 space-y-10">
+              <div className="space-y-4">
+                <div className="h-7 w-24 bg-neutral-800 rounded-lg animate-shimmer mb-6" />
+                <div className="h-4 w-full bg-neutral-800 rounded animate-shimmer" />
+                <div className="h-4 w-full bg-neutral-800 rounded animate-shimmer" />
+                <div className="h-4 w-3/4 bg-neutral-800 rounded animate-shimmer" />
+                <div className="h-4 w-1/2 bg-neutral-800 rounded animate-shimmer" />
+              </div>
+              <div className="space-y-4 pt-4">
+                <div className="h-7 w-24 bg-neutral-800 rounded-lg animate-shimmer mb-6" />
+                <div className="h-12 w-full bg-neutral-800 rounded-xl animate-shimmer" />
+                <div className="h-12 w-full bg-neutral-800 rounded-xl animate-shimmer" />
+              </div>
+            </div>
+            
+            <div className="md:col-span-2">
+              <div className="flex gap-6 mb-8 border-b border-neutral-800">
+                <div className="h-6 w-20 bg-neutral-800 rounded mb-4 animate-shimmer" />
+                <div className="h-6 w-24 bg-neutral-800 rounded mb-4 animate-shimmer" />
+              </div>
+              <div className="space-y-4">
+                <div className="h-32 bg-neutral-900 border border-neutral-800 rounded-[2rem] animate-shimmer" />
+                <div className="h-32 bg-neutral-900 border border-neutral-800 rounded-[2rem] animate-shimmer" />
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -149,9 +176,7 @@ export default function ClubDetails() {
   }
 
   return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
+    <div 
       className="flex-1 h-full overflow-y-auto bg-neutral-950 relative"
     >
       {/* Header Image */}
@@ -162,12 +187,12 @@ export default function ClubDetails() {
           variant="banner"
           className="w-full h-full object-cover"
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent" />
         
         {/* Back Button */}
         <button 
           onClick={() => navigate('/clubs')}
-          className="absolute top-6 left-6 z-10 p-2.5 bg-black/50 text-white hover:bg-black/80 rounded-full backdrop-blur-md transition-colors"
+          className="absolute top-6 left-6 z-10 p-2.5 bg-black/50 text-white hover:bg-black/80 rounded-full backdrop-blur-md transition-colors shadow-lg"
         >
           <ArrowLeft className="w-5 h-5" />
         </button>
@@ -192,16 +217,16 @@ export default function ClubDetails() {
               {club.tags && (
                 <div className="flex flex-wrap gap-2 mb-3">
                   {club.tags.split(',').map((tag: string) => (
-                    <span key={tag} className="px-3 py-1 rounded-full bg-primary-500 text-white text-xs font-bold tracking-wider uppercase inline-block">
+                    <span key={tag} className="px-3 py-1 rounded-full bg-primary-500 text-white text-xs font-bold tracking-wider uppercase inline-block shadow-md">
                       {tag.trim()}
                     </span>
                   ))}
                 </div>
               )}
-              <h1 className="text-4xl md:text-5xl font-black text-white leading-tight tracking-tight">
+              <h1 className="text-4xl md:text-5xl font-black text-white leading-tight tracking-tight drop-shadow-md">
                 {club.name}
               </h1>
-              <p className="text-neutral-300 font-medium mt-2">{club._count?.members || 0} Members</p>
+              <p className="text-neutral-200 font-medium mt-2 drop-shadow">{club._count?.members || 0} Members</p>
             </div>
           </div>
           <div className="hidden md:flex items-center gap-3">
@@ -225,9 +250,6 @@ export default function ClubDetails() {
                   )}
                 >
                   {isFollowing ? 'Following' : 'Follow'}
-                </button>
-                <button className="flex items-center gap-2 px-8 py-3 rounded-xl font-bold transition-all bg-white text-black hover:bg-neutral-200">
-                  {role.isMember ? 'Member' : 'Apply to Join'}
                 </button>
               </>
             )}
@@ -270,9 +292,6 @@ export default function ClubDetails() {
                 >
                   {isFollowing ? 'Following' : 'Follow'}
                 </button>
-                <button className="flex-1 flex items-center justify-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-3.5 rounded-xl font-bold transition-all">
-                  {role.isMember ? 'Member' : 'Apply'}
-                </button>
               </>
             )}
           </div>
@@ -304,42 +323,42 @@ export default function ClubDetails() {
           </div>
           
           <div className="md:col-span-2">
-            <div className="flex gap-6 mb-8 border-b border-neutral-800">
+            <div className="flex border-b border-neutral-800 mb-8 relative">
               <button 
                 onClick={() => setActiveTab('overview')}
                 className={clsx(
-                  "pb-4 text-sm font-bold transition-colors relative",
+                  "flex-1 py-4 text-sm font-medium transition-colors relative",
                   activeTab === 'overview' ? "text-white" : "text-neutral-500 hover:text-neutral-300"
                 )}
               >
                 Articles
                 {activeTab === 'overview' && (
-                  <motion.div layoutId="club_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+                  <motion.div layoutId={`club_active_tab_${id}`} className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
                 )}
               </button>
               <button 
                 onClick={() => setActiveTab('members')}
                 className={clsx(
-                  "pb-4 text-sm font-bold transition-colors relative",
+                  "flex-1 py-4 text-sm font-medium transition-colors relative",
                   activeTab === 'members' ? "text-white" : "text-neutral-500 hover:text-neutral-300"
                 )}
               >
                 Members
                 {activeTab === 'members' && (
-                  <motion.div layoutId="club_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+                  <motion.div layoutId={`club_active_tab_${id}`} className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
                 )}
               </button>
               {forms.length > 0 && (
                 <button 
                   onClick={() => setActiveTab('applications')}
                   className={clsx(
-                    "pb-4 text-sm font-bold transition-colors relative",
+                    "flex-1 py-4 text-sm font-medium transition-colors relative",
                     activeTab === 'applications' ? "text-white" : "text-neutral-500 hover:text-neutral-300"
                   )}
                 >
                   Applications
                   {activeTab === 'applications' && (
-                    <motion.div layoutId="club_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+                    <motion.div layoutId={`club_active_tab_${id}`} className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
                   )}
                 </button>
               )}
@@ -469,6 +488,6 @@ export default function ClubDetails() {
           onClose={() => setSelectedArticle(null)} 
         />
       )}
-    </motion.div>
+    </div>
   );
 }

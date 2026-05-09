@@ -900,11 +900,11 @@ export default function GroupsTab() {
          } else {
            const err = await res.json();
            console.error('Failed to edit message:', err);
-           toast(err.error || 'Failed to edit message');
+           toast.error(err.error || 'Failed to edit message');
          }
        } catch (err) {
          console.error(err);
-         toast('Failed to edit message');
+         toast.error('Failed to edit message');
        }
        return;
     }
@@ -1097,11 +1097,11 @@ export default function GroupsTab() {
       });
       if (!res.ok) {
         const err = await res.json();
-        toast(err.error || 'Failed to pin message');
+        toast.error(err.error || 'Failed to pin message');
       }
     } catch (error) {
       console.error(error);
-      toast('Failed to pin message');
+      toast.error('Failed to pin message');
     }
   };
 
@@ -2216,7 +2216,7 @@ export default function GroupsTab() {
                       if (res.ok) {
                         setReportingMessage(null);
                         setReportReason('');
-                        toast('Your report has been submitted. Thank you for helping keep our community safe.');
+                        toast.success('Your report has been submitted. Thank you for helping keep our community safe.');
                       } else {
                         const errorText = await res.text();
                         let errorMessage = 'Failed to submit report. Please try again.';
@@ -2226,11 +2226,11 @@ export default function GroupsTab() {
                         } catch (e) {
                            console.error("Non-JSON error response:", errorText);
                         }
-                        toast(errorMessage);
+                        toast.error(errorMessage);
                       }
                     } catch (error) {
                       console.error('Report error:', error);
-                      toast('Failed to submit report. Please check your connection.');
+                      toast.error('Failed to submit report. Please check your connection.');
                     } finally {
                       setIsSubmittingReport(false);
                     }

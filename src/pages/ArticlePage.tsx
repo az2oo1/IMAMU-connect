@@ -79,7 +79,7 @@ export default function ArticlePage() {
         const data = await res.json();
         setIsSaved(data.saved);
       } else {
-        toast("Please log in to save articles.");
+        toast.info("Please log in to save articles.");
       }
     } catch (e) {
       console.error(e);
@@ -94,7 +94,7 @@ export default function ArticlePage() {
       }).catch(console.error);
     } else {
       navigator.clipboard.writeText(window.location.href);
-      toast('Link copied to clipboard!');
+      toast.success('Link copied to clipboard!');
     }
   };
 
@@ -113,7 +113,7 @@ export default function ArticlePage() {
         const data = await res.json();
         setIsFollowing(data.following);
       } else {
-        toast("Please log in to follow.");
+        toast.info("Please log in to follow.");
       }
     } catch (e) {
       console.error(e);

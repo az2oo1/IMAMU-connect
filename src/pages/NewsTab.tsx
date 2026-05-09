@@ -228,16 +228,16 @@ export default function NewsTab() {
 
         {loading ? (
           <>
-            <div className="mb-10 w-full relative rounded-[2rem] overflow-hidden border border-white/10 bg-neutral-900 animate-pulse aspect-[2/1] md:aspect-[2.5/1]" />
+            <div className="mb-10 w-full relative rounded-[2rem] border border-white/10 bg-neutral-900 animate-shimmer aspect-[2/1] md:aspect-[2.5/1]" />
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pb-24">
               {[1, 2, 3, 4, 5, 6].map(i => (
-                <div key={i} className="bg-neutral-900/40 border border-white/5 rounded-3xl overflow-hidden animate-pulse flex flex-col h-80">
-                  <div className="h-48 bg-neutral-800" />
+                <div key={i} className="bg-neutral-900/40 border border-white/5 rounded-3xl overflow-hidden flex flex-col h-80">
+                  <div className="h-48 bg-neutral-800 animate-shimmer" />
                   <div className="p-6 flex flex-col flex-1">
-                    <div className="h-4 bg-neutral-800 rounded w-1/3 mb-3" />
-                    <div className="h-6 bg-neutral-800 rounded w-full mb-2" />
-                    <div className="h-6 bg-neutral-800 rounded w-2/3 mb-4" />
-                    <div className="mt-auto h-4 bg-neutral-800 rounded w-1/4" />
+                    <div className="h-4 bg-neutral-800 rounded w-1/3 mb-3 animate-shimmer" />
+                    <div className="h-6 bg-neutral-800 rounded w-full mb-2 animate-shimmer" />
+                    <div className="h-6 bg-neutral-800 rounded w-2/3 mb-4 animate-shimmer" />
+                    <div className="mt-auto h-4 bg-neutral-800 rounded w-1/4 animate-shimmer" />
                   </div>
                 </div>
               ))}
@@ -261,27 +261,27 @@ export default function NewsTab() {
                     variant="banner"
                     className="w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950 via-neutral-950/40 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/90 via-neutral-950/20 to-transparent" />
                   
                   <div className="absolute bottom-0 left-0 w-full p-6 md:p-10 flex flex-col justify-end">
-                    <div className="flex items-center gap-3 mb-4">
-                      <span className="px-3 py-1 rounded-full bg-primary-500 text-white text-xs font-bold tracking-wider uppercase">
+                    <div className="flex items-center gap-3 mb-4 drop-shadow">
+                      <span className="px-3 py-1 rounded-full bg-primary-500 text-white text-xs font-bold tracking-wider uppercase shadow-md">
                         {featuredPost.category}
                       </span>
-                      <div className="flex items-center gap-1.5 text-neutral-300 text-xs font-medium">
+                      <div className="flex items-center gap-1.5 text-neutral-200 text-xs font-medium">
                         <Calendar className="w-3.5 h-3.5" />
                         {featuredPost.date}
                       </div>
-                      <div className="flex items-center gap-1.5 text-neutral-300 text-xs font-medium">
+                      <div className="flex items-center gap-1.5 text-neutral-200 text-xs font-medium">
                         <Clock className="w-3.5 h-3.5" />
                         {featuredPost.readTime}
                       </div>
                     </div>
                     
-                    <h2 className="text-2xl md:text-4xl font-black text-white leading-tight tracking-tight mb-3 group-hover:text-primary-400 transition-colors">
+                    <h2 className="text-2xl md:text-4xl font-black text-white leading-tight tracking-tight mb-3 group-hover:text-primary-400 transition-colors drop-shadow-md">
                       {featuredPost.title}
                     </h2>
-                    <p className="text-neutral-300 text-sm md:text-base max-w-3xl whitespace-pre-wrap line-clamp-2 md:line-clamp-4">
+                    <p className="text-neutral-200 text-sm md:text-base max-w-3xl whitespace-pre-wrap line-clamp-2 md:line-clamp-4 drop-shadow">
                       {stripHtmlAndMarkdown(featuredPost.content ? featuredPost.content : featuredPost.excerpt)}
                     </p>
                   </div>

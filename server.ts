@@ -1,6 +1,7 @@
 import express from 'express';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
@@ -8,6 +9,43 @@ import multer from 'multer';
 import archiver from 'archiver';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import {
+  generateRegistrationOptions,
+  verifyRegistrationResponse,
+  generateAuthenticationOptions,
+  verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+
+const passkeyChallenges = new Map<string, string>();
+
+function getRpId(req: express.Request) {
+  if (req.query.rpId && typeof req.query.rpId === 'string') {
+    return req.query.rpId;
+  }
+  let host = req.headers['x-forwarded-host'] || req.headers.host || req.hostname;
+  if (Array.isArray(host)) host = host[0];
+  
+  let result = req.hostname;
+  try {
+    result = host.split(':')[0];
+  } catch {}
+  
+  if (req.headers.origin) {
+     try {
+       result = new URL(req.headers.origin).hostname;
+     } catch {}
+  }
+  
+  console.log('getRpId computing rpId:', result, 'headers:', req.headers);
+  return result;
+}
+
+function getExpectedOrigin(req: express.Request) {
+  if (req.headers.origin) return req.headers.origin;
+  const rpId = getRpId(req);
+  return `https://${rpId}`;
+}
+
 
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-dev';
@@ -285,7 +323,7 @@ async function startServer() {
       
       const uploadsDir = path.join(process.cwd(), 'uploads');
       if (!filePath.startsWith(uploadsDir) || !fs.existsSync(filePath)) {
-        return res.status(404).json({ error: 'Image not found' });
+        return res.redirect(`https://picsum.photos/${w || 200}/${h || 200}?random=${url.replace(/[^0-9]/g, '') || 1}`);
       }
 
       const width = w ? parseInt(w as string) : undefined;
@@ -339,10 +377,27 @@ async function startServer() {
     });
   });
 
+  // Auth: Check Username
+  app.get('/api/auth/check-username', async (req, res) => {
+    try {
+      const { username } = req.query;
+      if (!username || typeof username !== 'string') {
+        return res.status(400).json({ error: 'Username is required' });
+      }
+      const existingUser = await prisma.user.findUnique({ 
+        where: { username: username.toLowerCase() } 
+      });
+      return res.json({ available: !existingUser });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to check username' });
+    }
+  });
+
   // Auth: Register
   app.post('/api/auth/register', async (req, res) => {
     try {
-      const { username, password, email } = req.body;
+      const { username, password, studentEmail, googleEmail } = req.body;
       const normalizedUsername = username.toLowerCase();
       
       const existingUser = await prisma.user.findUnique({ where: { username: normalizedUsername } });
@@ -356,9 +411,10 @@ async function startServer() {
         data: {
           username: normalizedUsername,
           passwordHash,
-          studentEmail: email || null,
+          studentEmail: studentEmail || null,
+          googleEmail: googleEmail || null,
           name: username,
-          role: (email === 'abdulazizalgassem4@gmail.com' || username === 'admin') ? 'ADMIN' : 'USER'
+          role: (studentEmail === 'abdulazizalgassem4@gmail.com' || googleEmail === 'abdulazizalgassem4@gmail.com' || username === 'admin') ? 'ADMIN' : 'USER'
         },
         select: { 
           id: true, 
@@ -559,6 +615,305 @@ async function startServer() {
       res.json({ success: true });
     } catch (error) {
       res.status(401).json({ error: 'Invalid token' });
+    }
+  });
+
+  // Auth: Change Password
+  app.put('/api/auth/password', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const { oldPassword, newPassword } = req.body;
+      
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      if (!user || !user.passwordHash) return res.status(404).json({ error: 'User not found' });
+      
+      const isValid = await bcrypt.compare(oldPassword, user.passwordHash);
+      if (!isValid) return res.status(400).json({ error: 'Incorrect old password' });
+      
+      const newHash = await bcrypt.hash(newPassword, 10);
+      await prisma.user.update({
+        where: { id: decoded.userId },
+        data: { passwordHash: newHash }
+      });
+      
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  // Passkey Registration Options
+  app.get('/api/auth/passkey/generate-registration-options', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId }, include: { passkeys: true } });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+
+      const options = await generateRegistrationOptions({
+        rpName: 'EduPlatform',
+        rpID: getRpId(req as express.Request),
+        userID: new Uint8Array(Buffer.from(user.id)),
+        userName: user.username,
+        userDisplayName: user.username || 'User',
+        attestationType: 'none',
+        excludeCredentials: user.passkeys.map(pk => ({
+          id: pk.id,
+          type: 'public-key',
+        })),
+        authenticatorSelection: {
+          residentKey: 'preferred',
+          userVerification: 'preferred',
+        },
+      });
+
+      // Remove hints and extensions to prevent bugs with certain password managers (like Bitwarden)
+      if (options.hints) delete options.hints;
+      if (options.extensions) delete options.extensions;
+
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { currentChallenge: options.challenge }
+      });
+
+      res.json(options);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  // Passkey Verify Registration
+  app.post('/api/auth/passkey/verify-registration', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+      if (!user || !user.currentChallenge) return res.status(400).json({ error: 'No challenge found' });
+
+      const body = req.body;
+      const expectedOrigin = getExpectedOrigin(req as express.Request);
+
+      const verification = await verifyRegistrationResponse({
+        response: body,
+        expectedChallenge: user.currentChallenge,
+        expectedOrigin,
+        expectedRPID: getRpId(req as express.Request),
+      });
+
+      if (verification.verified && verification.registrationInfo) {
+        const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+
+        await prisma.passkey.create({
+          data: {
+            id: credential.id,
+            userId: user.id,
+            publicKey: Buffer.from(credential.publicKey),
+            counter: BigInt(credential.counter),
+            deviceType: credentialDeviceType,
+            backedUp: credentialBackedUp,
+            transports: credential.transports ? JSON.stringify(credential.transports) : null,
+            name: body.name || 'New Device'
+          }
+        });
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { currentChallenge: null }
+        });
+
+        res.json({ verified: true });
+      } else {
+        res.status(400).json({ error: 'Verification failed' });
+      }
+    } catch (e: any) {
+      console.error('Verify registration error:', e);
+      passkeyChallenges.set('last_error', e.stack || String(e));
+      res.status(500).json({ error: 'Failed', details: e.message || String(e) });
+    }
+  });
+
+  app.get('/api/auth/passkey/debug-error', (req, res) => {
+    res.send(passkeyChallenges.get('last_error') || 'no error');
+  });
+
+  // Passkey Generate Authentication Options
+  app.get('/api/auth/passkey/generate-authentication-options', async (req, res) => {
+    try {
+      const { username } = req.query;
+      
+      let allowCredentials;
+      let targetUserId = null;
+
+      if (username) {
+        const normalizedUsername = String(username).toLowerCase();
+        const user = await prisma.user.findFirst({ 
+          where: { 
+            OR: [
+              { username: normalizedUsername },
+              { studentEmail: normalizedUsername },
+              { googleEmail: normalizedUsername }
+            ]
+          },
+          include: { passkeys: true }
+        });
+
+        if (user && user.passkeys.length > 0) {
+          allowCredentials = user.passkeys.map(pk => ({
+            id: pk.id,
+            type: 'public-key' as const,
+          }));
+          targetUserId = user.id;
+        }
+      }
+
+      const options = await generateAuthenticationOptions({
+        rpID: getRpId(req as express.Request),
+        allowCredentials,
+        userVerification: 'preferred',
+      });
+
+      if (options.hints) delete options.hints;
+      if (options.extensions) delete options.extensions;
+
+      const sessionId = crypto.randomUUID();
+
+      if (targetUserId) {
+        await prisma.user.update({
+          where: { id: targetUserId },
+          data: { currentChallenge: options.challenge }
+        });
+      } else {
+        passkeyChallenges.set(sessionId, options.challenge);
+        setTimeout(() => passkeyChallenges.delete(sessionId), 5 * 60 * 1000);
+      }
+
+      res.json({ options, sessionId });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  // Passkey Verify Authentication
+  app.post('/api/auth/passkey/verify-authentication', async (req, res) => {
+    try {
+      const { username, sessionId, response } = req.body;
+      let expectedChallenge;
+      
+      const passkey = await prisma.passkey.findUnique({
+        where: { id: response.id },
+        include: { user: true }
+      });
+
+      if (!passkey) return res.status(400).json({ error: 'Passkey not found' });
+      const user = passkey.user;
+
+      if (username) {
+        expectedChallenge = user.currentChallenge;
+      } else {
+        expectedChallenge = passkeyChallenges.get(sessionId);
+        passkeyChallenges.delete(sessionId); // consume the challenge
+      }
+
+      if (!expectedChallenge) return res.status(400).json({ error: 'Invalid challenge state' });
+
+      const expectedOrigin = getExpectedOrigin(req as express.Request);
+
+      const verification = await verifyAuthenticationResponse({
+        response,
+        expectedChallenge,
+        expectedOrigin,
+        expectedRPID: getRpId(req as express.Request),
+        credential: {
+          id: passkey.id,
+          publicKey: new Uint8Array(passkey.publicKey),
+          counter: Number(passkey.counter),
+          transports: passkey.transports ? JSON.parse(passkey.transports) : undefined,
+        },
+      });
+
+      if (verification.verified) {
+        await prisma.passkey.update({
+          where: { id: passkey.id },
+          data: { 
+            counter: BigInt(verification.authenticationInfo.newCounter),
+            lastUsedAt: new Date()
+          }
+        });
+
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { currentChallenge: null }
+        });
+
+        const safeUser = {
+          id: user.id, username: user.username, name: user.name,
+          studentEmail: user.studentEmail, googleEmail: user.googleEmail,
+          bio: user.bio, avatarUrl: user.avatarUrl, bannerUrl: user.bannerUrl,
+          links: [],
+          role: user.role, isBanned: user.isBanned
+        };
+        const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+        
+        res.json({ success: true, token, user: safeUser });
+      } else {
+        res.status(400).json({ error: 'Verification failed' });
+      }
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  // Get User Passkeys
+  app.get('/api/auth/passkeys', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      const passkeys = await prisma.passkey.findMany({ 
+        where: { userId: decoded.userId },
+        select: { id: true, name: true, createdAt: true, lastUsedAt: true }
+      });
+      res.json({ passkeys });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  // Delete Passkey
+  app.delete('/api/auth/passkeys/:id', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const decoded: any = jwt.verify(token, JWT_SECRET);
+      
+      // Check ownership
+      const passkey = await prisma.passkey.findUnique({ where: { id: req.params.id } });
+      if (!passkey || passkey.userId !== decoded.userId) return res.status(403).json({ error: 'Not authorized' });
+
+      await prisma.passkey.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
     }
   });
 

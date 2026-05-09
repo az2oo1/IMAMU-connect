@@ -1,6 +1,7 @@
 import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Save, Shield, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface EditCourseModalProps {
   course: any;
@@ -84,8 +85,9 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
       });
       if (!res.ok) throw new Error('Failed to update course');
       onUpdate();
-      toast('Course updated successfully!');
+      toast.success('Course updated successfully!');
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     }
   };
@@ -149,15 +151,21 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
         <div className="flex border-b border-neutral-800 shrink-0">
           <button
             onClick={() => setActiveTab('details')}
-            className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'details' ? 'text-primary-400 border-b-2 border-primary-400' : 'text-neutral-400 hover:text-white'}`}
+            className={`flex-1 py-3 text-sm font-bold transition-colors relative ${activeTab === 'details' ? 'text-primary-400' : 'text-neutral-400 hover:text-white'}`}
           >
             Details
+            {activeTab === 'details' && (
+              <motion.div layoutId={`course_active_tab_${course.id}`} className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+            )}
           </button>
           <button
             onClick={() => setActiveTab('members')}
-            className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'members' ? 'text-primary-400 border-b-2 border-primary-400' : 'text-neutral-400 hover:text-white'}`}
+            className={`flex-1 py-3 text-sm font-bold transition-colors relative ${activeTab === 'members' ? 'text-primary-400' : 'text-neutral-400 hover:text-white'}`}
           >
             Members
+            {activeTab === 'members' && (
+              <motion.div layoutId={`course_active_tab_${course.id}`} className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+            )}
           </button>
         </div>
 

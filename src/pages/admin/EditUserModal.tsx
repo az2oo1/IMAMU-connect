@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Save } from 'lucide-react';
+import { toast } from 'sonner';
 
 interface EditUserModalProps {
   isOpen: boolean;
@@ -77,9 +78,11 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
         throw new Error(data.error || 'Failed to update user');
       }
 
+      toast.success('User updated successfully');
       onUserUpdated();
       onClose();
     } catch (err: any) {
+      toast.error(err.message);
       setError(err.message);
     } finally {
       setIsLoading(false);

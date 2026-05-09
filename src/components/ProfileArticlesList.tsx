@@ -85,9 +85,9 @@ export default function ProfileArticlesList({ profileUserId, currentUserId }: { 
       navigate('/compose?edit=' + articleId);
     } else if (action === 'share') {
       navigator.clipboard.writeText(`${window.location.origin}/news/${articleId}`);
-      toast("Link copied!");
+      toast.success("Link copied!");
     } else if (action === 'save') {
-      toast("Saved!");
+      toast.success("Saved!");
     } else if (action === 'report') {
       navigate(`/reports/new?url=${encodeURIComponent(`/news/${articleId}`)}`);
     }
