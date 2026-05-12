@@ -1,7 +1,8 @@
 import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Plus, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
+import { X, Save, Plus, Trash2, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import TagInput from '../../components/TagInput';
+import ImageUploadInput from '../../components/ImageUploadInput';
 
 interface EditClubModalProps {
   club: any;
@@ -216,58 +217,21 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Avatar Image</label>
-                <div className="flex items-center gap-4">
-                  {avatarUrl ? (
-                    <img referrerPolicy="no-referrer" src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
-                      <ImageIcon className="w-5 h-5 text-neutral-500" />
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
-                  >
-                    <Upload className="w-4 h-4" /> Upload
-                  </button>
-                  <input
-                    type="file"
-                    ref={fileInputRef}
-                    onChange={(e) => handleFileUpload(e, 'avatar')}
-                    className="hidden"
-                    accept="image/*"
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Banner Image</label>
-                <div className="flex items-center gap-4">
-                  {bannerUrl ? (
-                    <img referrerPolicy="no-referrer" src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
-                  ) : (
-                    <div className="w-20 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
-                      <ImageIcon className="w-5 h-5 text-neutral-500" />
-                    </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => bannerInputRef.current?.click()}
-                    className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
-                  >
-                    <Upload className="w-4 h-4" /> Upload
-                  </button>
-                  <input
-                    type="file"
-                    ref={bannerInputRef}
-                    onChange={(e) => handleFileUpload(e, 'banner')}
-                    className="hidden"
-                    accept="image/*"
-                  />
-                </div>
-              </div>
+              <ImageUploadInput
+                label="Avatar Image"
+                value={avatarUrl}
+                onChange={setAvatarUrl}
+                type="avatar"
+                uploadUrl={`/api/upload?type=club&id=${club.id}`}
+              />
+              
+              <ImageUploadInput
+                label="Banner Image"
+                value={bannerUrl}
+                onChange={setBannerUrl}
+                type="banner"
+                uploadUrl={`/api/upload?type=club&id=${club.id}`}
+              />
             </div>
 
             <div>
@@ -363,7 +327,7 @@ export default function EditClubModal({ club, onClose, onUpdate }: EditClubModal
             disabled={isLoading}
             className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-6 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50"
           >
-            <Save className="w-4 h-4" />
+            {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
             {isLoading ? 'Saving...' : 'Save Changes'}
           </button>
         </div>

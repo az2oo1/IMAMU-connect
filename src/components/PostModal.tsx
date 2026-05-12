@@ -86,12 +86,12 @@ export default function PostModal({ post, isOpen, onClose }: PostModalProps) {
                       name: post.author,
                       handle: post.handle,
                       bio: post.bio,
-                      avatar: `https://picsum.photos/seed/${post.author}/100/100`
+                      avatar: null
                     }}
                   >
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary-400 to-primary-600 p-[2px] shadow-lg cursor-pointer">
                       <img 
-                        src={`https://picsum.photos/seed/${post.author}/100/100`} 
+                        src={null} 
                         className="w-full h-full rounded-[10px] border-2 border-neutral-900 object-cover" 
                         alt={post.author} 
                         referrerPolicy="no-referrer" 
@@ -129,7 +129,7 @@ export default function PostModal({ post, isOpen, onClose }: PostModalProps) {
                   {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="flex gap-3">
                       <div className="w-8 h-8 rounded-full bg-neutral-800 shrink-0 overflow-hidden">
-                        <img referrerPolicy="no-referrer" src={`https://picsum.photos/seed/user${i}/100/100`} alt="User" className="w-full h-full object-cover" />
+                        <img referrerPolicy="no-referrer" src={null} alt="User" className="w-full h-full object-cover" />
                       </div>
                       <div>
                         <div className="bg-neutral-900 rounded-2xl rounded-tl-none px-4 py-2.5">

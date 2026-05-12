@@ -13,8 +13,8 @@ export const CLUBS_DATA = [
     id: '1',
     name: 'Robotics Club',
     category: 'Tech',
-    banner: 'https://picsum.photos/seed/robotics_banner/800/400',
-    logo: 'https://picsum.photos/seed/robotics_logo/200/200',
+    banner: null,
+    logo: null,
     bio: 'We build robots, compete in national tournaments, and host workshops on Arduino, Raspberry Pi, and AI. Open to all majors!',
     members: 120,
     socials: {
@@ -29,7 +29,7 @@ export const CLUBS_DATA = [
         category: 'Tech',
         date: 'Mar 15, 2026',
         readTime: '3 min read',
-        image: 'https://picsum.photos/seed/robotwin/600/400',
+        image: null,
         excerpt: 'Our autonomous rover took first place at the state competition.'
       }
     ]
@@ -38,8 +38,8 @@ export const CLUBS_DATA = [
     id: '2',
     name: 'Debate Society',
     category: 'Academic',
-    banner: 'https://picsum.photos/seed/debate_banner/800/400',
-    logo: 'https://picsum.photos/seed/debate_logo/200/200',
+    banner: null,
+    logo: null,
     bio: 'Join us to improve your public speaking, critical thinking, and argumentation skills. We meet every Thursday evening.',
     members: 85,
     socials: {
@@ -52,8 +52,8 @@ export const CLUBS_DATA = [
     id: '3',
     name: 'Photography Club',
     category: 'Arts',
-    banner: 'https://picsum.photos/seed/camera_banner/800/400',
-    logo: 'https://picsum.photos/seed/camera_logo/200/200',
+    banner: null,
+    logo: null,
     bio: 'A community for photographers of all skill levels. We organize photo walks, gallery exhibitions, and editing workshops.',
     members: 210,
     socials: {
@@ -66,7 +66,7 @@ export const CLUBS_DATA = [
         category: 'Arts',
         date: 'Apr 02, 2026',
         readTime: '2 min read',
-        image: 'https://picsum.photos/seed/gallery/600/400',
+        image: null,
         excerpt: 'Submit your best campus life photos for our upcoming gallery.'
       }
     ]
@@ -75,8 +75,8 @@ export const CLUBS_DATA = [
     id: '4',
     name: 'Cybersecurity Group',
     category: 'Tech',
-    banner: 'https://picsum.photos/seed/hacker_banner/800/400',
-    logo: 'https://picsum.photos/seed/hacker_logo/200/200',
+    banner: null,
+    logo: null,
     bio: 'Learn ethical hacking, network defense, and participate in CTF (Capture The Flag) competitions.',
     members: 150,
     socials: {
@@ -89,8 +89,8 @@ export const CLUBS_DATA = [
     id: '5',
     name: 'Outdoor Adventure',
     category: 'Sports',
-    banner: 'https://picsum.photos/seed/hiking_banner/800/400',
-    logo: 'https://picsum.photos/seed/hiking_logo/200/200',
+    banner: null,
+    logo: null,
     bio: 'Hiking, rock climbing, camping, and more! We explore the great outdoors every weekend.',
     members: 340,
     socials: {
@@ -103,7 +103,7 @@ export const CLUBS_DATA = [
         category: 'Sports',
         date: 'Apr 10, 2026',
         readTime: '4 min read',
-        image: 'https://picsum.photos/seed/mountain/600/400',
+        image: null,
         excerpt: 'Join us for a 2-day camping and hiking trip. Gear provided.'
       }
     ]

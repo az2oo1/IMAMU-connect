@@ -173,7 +173,7 @@ const TipTapEditor = forwardRef<TipTapEditorRef, Props>(({ value, onChange, plac
                 >
                   <div className="w-6 h-6 rounded-full bg-neutral-700 overflow-hidden shrink-0">
                     <img 
-                      src={member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`} 
+                      src={member.avatarUrl} 
                       alt={member.name || member.username} 
                       className="w-full h-full object-cover" 
                       referrerPolicy="no-referrer" 

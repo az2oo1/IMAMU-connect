@@ -650,7 +650,7 @@ export default function MessagesTab() {
 
   const getDMAvatar = (group: any) => {
     const other = getOtherMember(group);
-    return other?.avatarUrl || `https://picsum.photos/seed/${other?.id || group.id}/100/100`;
+    return other?.avatarUrl;
   };
 
   const isNearBottomRef = useRef(true);
@@ -987,12 +987,12 @@ export default function MessagesTab() {
                                 name: senderName,
                                 handle: msg.author?.username || senderName.toLowerCase().replace(/\s+/g, ''),
                                 bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
-                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
+                                avatar: msg.author?.avatarUrl
                               }}
                             >
                               <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
                                 <OptimizedImage 
-                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
+                                  src={msg.author?.avatarUrl} 
                                   alt={senderName} 
                                   className="w-full h-full object-cover" 
                                   variant="small"
@@ -1488,7 +1488,7 @@ export default function MessagesTab() {
                             >
                               <div className="w-6 h-6 rounded-full bg-neutral-700 overflow-hidden shrink-0">
                                 <img 
-                                  src={member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`} 
+                                  src={member.avatarUrl} 
                                   alt={member.name || member.username} 
                                   className="w-full h-full object-cover" 
                                   referrerPolicy="no-referrer" 
@@ -1721,7 +1721,7 @@ export default function MessagesTab() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block mb-2">Message to report</span>
                   <div className="flex items-center gap-3 mb-2">
                     <img referrerPolicy="no-referrer" 
-                      src={reportingMessage.author?.avatarUrl || `https://picsum.photos/seed/${reportingMessage.authorId}/50/50`} 
+                      src={reportingMessage.author?.avatarUrl} 
                       className="w-6 h-6 rounded-full object-cover" 
                       alt=""
                     />
@@ -1884,7 +1884,7 @@ export default function MessagesTab() {
                     >
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-neutral-800 border border-neutral-700 overflow-hidden">
-                          <img src={searchUser.avatarUrl || `https://picsum.photos/seed/${searchUser.id}/100/100`} alt={searchUser.username} className="w-full h-full object-cover" />
+                          <img src={searchUser.avatarUrl} alt={searchUser.username} className="w-full h-full object-cover" />
                         </div>
                         <div>
                           <div className="font-bold text-neutral-200">{searchUser.name || searchUser.username}</div>

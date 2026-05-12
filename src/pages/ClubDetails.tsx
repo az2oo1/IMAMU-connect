@@ -182,7 +182,7 @@ export default function ClubDetails() {
       {/* Header Image */}
       <div className="relative h-64 md:h-80 shrink-0">
         <OptimizedImage 
-          src={club.bannerUrl || `https://picsum.photos/seed/${club.id}/800/400`} 
+          src={club.bannerUrl} 
           alt={`${club.name} banner`} 
           variant="banner"
           className="w-full h-full object-cover"
@@ -476,7 +476,7 @@ export default function ClubDetails() {
         <NewsArticleModal 
           article={{
             ...selectedArticle,
-            image: selectedArticle.photoUrl || selectedArticle.imageUrl || (selectedArticle.images && selectedArticle.images[0]) || `https://picsum.photos/seed/${selectedArticle.id}/800/600`,
+            image: selectedArticle.photoUrl || selectedArticle.imageUrl || (selectedArticle.images && selectedArticle.images[0]),
             images: selectedArticle.images || [],
             date: new Date(selectedArticle.createdAt).toLocaleDateString(),
             category: club.name,

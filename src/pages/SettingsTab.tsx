@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Shield, Lock, Palette, ChevronRight, ChevronLeft, LogOut, GripVertical, KeyRound, Fingerprint, Plus, Trash2 } from 'lucide-react';
+import { Shield, Lock, Palette, ChevronRight, ChevronLeft, LogOut, GripVertical, KeyRound, Fingerprint, Plus, Trash2, BookOpen } from 'lucide-react';
+import ConfirmModal from '../components/ConfirmModal';
 import { Reorder } from 'motion/react';
 import { useTheme } from '../ThemeContext';
 import { useUser } from '../contexts/UserContext';
@@ -12,6 +13,7 @@ export default function SettingsTab() {
   const { hue, setHue, colorPreset, setColorPreset, navOrder, setNavOrder, hiddenNavItems, setHiddenNavItems } = useTheme();
   const { isPrivateProfile, setIsPrivateProfile, user, updateProfile, logout } = useUser();
   const [activePage, setActivePage] = useState<'main' | 'privacy' | 'security' | 'appearance' | 'password_change'>('main');
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, config: null | {title: string, message: string, onConfirm: () => void, isDestructive?: boolean}}>({ isOpen: false, config: null });
   
   const [showGoogleConnect, setShowGoogleConnect] = useState(false);
   const [googleConnectStep, setGoogleConnectStep] = useState<'email' | 'verify'>('email');
@@ -23,6 +25,12 @@ export default function SettingsTab() {
   const [passkeys, setPasskeys] = useState<any[]>([]);
 
   const [isAddingPasskey, setIsAddingPasskey] = useState(false);
+  const [pendingPasskey, setPendingPasskey] = useState<any>(null);
+  const [passkeyNameInput, setPasskeyNameInput] = useState('My Device');
+
+  const [imamuEmailSent, setImamuEmailSent] = useState(false);
+  const [imamuEmailInput, setImamuEmailInput] = useState('');
+  const [imamuCodeInput, setImamuCodeInput] = useState('');
 
   useEffect(() => {
     fetchPasskeys();
@@ -69,28 +77,37 @@ export default function SettingsTab() {
         return;
       }
 
-      const passkeyName = `Passkey (${new Date().toLocaleDateString()})`;
+      setPendingPasskey(attResp);
+      setPasskeyNameInput(`My Device (${new Date().toLocaleDateString()})`);
+    } catch (e: any) {
+      toast.error(e.message || 'Passkey registration failed');
+    } finally {
+      setIsAddingPasskey(false);
+    }
+  };
 
+  const finalizePasskey = async () => {
+    if (!pendingPasskey) return;
+    try {
       const verificationResp = await fetch(`/api/auth/passkey/verify-registration?rpId=${encodeURIComponent(window.location.hostname)}`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}` 
         },
-        body: JSON.stringify({ ...attResp, name: passkeyName }),
+        body: JSON.stringify({ ...pendingPasskey, name: passkeyNameInput }),
       });
 
       const verificationJSON = await verificationResp.json();
       if (verificationJSON && verificationJSON.verified) {
         toast.success("Passkey registered properly!");
         fetchPasskeys();
+        setPendingPasskey(null);
       } else {
         toast.error(`Verification failed: ${verificationJSON.details || verificationJSON.error || 'Unknown error'}`);
       }
     } catch (e: any) {
-      toast.error(e.message || 'Passkey registration failed');
-    } finally {
-      setIsAddingPasskey(false);
+      toast.error(e.message || 'Passkey verification failed');
     }
   };
 
@@ -311,7 +328,14 @@ export default function SettingsTab() {
               type="checkbox" 
               className="w-5 h-5 accent-primary-500 cursor-pointer" 
               checked={isPrivateProfile}
-              onChange={(e) => setIsPrivateProfile(e.target.checked)}
+              onChange={async (e) => {
+                try {
+                  await setIsPrivateProfile(e.target.checked);
+                  toast.success('Privacy settings updated');
+                } catch (error) {
+                  toast.error('Failed to update privacy settings');
+                }
+              }}
             />
           </label>
         </div>
@@ -380,6 +404,22 @@ export default function SettingsTab() {
                 </button>
               </div>
               <div className="divide-y divide-neutral-800">
+                {pendingPasskey && (
+                  <div className="p-4 bg-primary-900/20 border-b border-primary-500/20 flex flex-col gap-3">
+                    <span className="text-sm font-semibold text-white">Name your new passkey:</span>
+                    <div className="flex gap-2">
+                       <input 
+                         type="text" 
+                         value={passkeyNameInput}
+                         onChange={(e) => setPasskeyNameInput(e.target.value)}
+                         className="flex-1 bg-neutral-950 border border-neutral-700 rounded-xl px-3 py-2 text-white focus:outline-none focus:ring-1 focus:ring-primary-500"
+                         placeholder="e.g. My Phone"
+                         autoFocus
+                       />
+                       <button onClick={finalizePasskey} className="px-4 py-2 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-500 transition-colors">Save</button>
+                    </div>
+                  </div>
+                )}
                 {passkeys.length === 0 ? (
                   <div className="p-6 text-center text-sm text-neutral-500">No passkeys added yet.</div>
                 ) : (
@@ -409,18 +449,120 @@ export default function SettingsTab() {
           
           <div className="space-y-4 items-center gap-1">
             <div className="p-5 bg-neutral-900 rounded-2xl border border-neutral-800 flex flex-col gap-3">
-              <span className="text-sm font-semibold text-neutral-200">IMAMU Student Email</span>
-              <input 
-                type="email" 
-                placeholder="student@sm.imamu.edu.sa"
-                className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-sm text-white focus:ring-1 focus:ring-primary-500 outline-none w-full shadow-inner"
-                defaultValue={user?.studentEmail || ''}
-                onBlur={(e) => {
-                  if (e.target.value !== user?.studentEmail) {
-                    updateProfile({ studentEmail: e.target.value });
-                  }
-                }}
-              />
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-semibold text-neutral-200">IMAMU Student Email</span>
+              </div>
+              
+              {user?.studentEmail ? (
+                <div className="flex items-center justify-between bg-neutral-950 p-4 rounded-xl border border-neutral-800 shadow-inner">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-primary-500/20 rounded-full flex items-center justify-center shrink-0 border border-primary-500/30">
+                      <BookOpen className="w-4 h-4 text-primary-400" />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-white leading-tight">Connected</p>
+                      <p className="text-xs text-neutral-400 mt-0.5">{user.studentEmail}</p>
+                    </div>
+                  </div>
+                  <button 
+                    className="px-4 py-2 bg-red-500/10 text-red-500 text-sm font-bold rounded-lg hover:bg-red-500/20 transition-colors"
+                    onClick={async () => {
+                      try {
+                        const res = await fetch('/api/settings/imamu-email/disconnect', {
+                          method: 'POST',
+                          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                        });
+                        if (res.ok) {
+                          toast.success('Disconnected IMAMU email');
+                          window.location.reload();
+                        }
+                      } catch (e) {}
+                    }}
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {!imamuEmailSent ? (
+                    <div className="flex gap-2">
+                      <input 
+                        type="email" 
+                        placeholder="student@sm.imamu.edu.sa"
+                        className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-sm text-white focus:ring-1 focus:ring-primary-500 outline-none flex-1 shadow-inner"
+                        value={imamuEmailInput}
+                        onChange={(e) => setImamuEmailInput(e.target.value)}
+                      />
+                      <button 
+                        onClick={async () => {
+                          if (!imamuEmailInput.endsWith('@sm.imamu.edu.sa')) {
+                            toast.error('Must be a valid @sm.imamu.edu.sa email');
+                            return;
+                          }
+                          try {
+                            const res = await fetch('/api/settings/imamu-email/send-code', {
+                              method: 'POST',
+                              headers: { 
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${localStorage.getItem('token')}` 
+                              },
+                              body: JSON.stringify({ email: imamuEmailInput })
+                            });
+                            if (res.ok) {
+                              setImamuEmailSent(true);
+                              toast.success('Verification code sent');
+                            } else {
+                              const data = await res.json();
+                              toast.error(data.error || 'Failed to send code');
+                            }
+                          } catch (e) {
+                            toast.error('Network error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-primary-600 text-white text-sm font-bold rounded-xl hover:bg-primary-500 transition-colors"
+                      >
+                        Add Email
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="Verification Code (e.g. 12345)"
+                        className="bg-neutral-950 border border-neutral-800 rounded-xl p-3 text-sm text-white focus:ring-1 focus:ring-primary-500 outline-none flex-1 shadow-inner"
+                        value={imamuCodeInput}
+                        onChange={(e) => setImamuCodeInput(e.target.value)}
+                      />
+                      <button 
+                        onClick={async () => {
+                          try {
+                            const res = await fetch('/api/settings/imamu-email/verify-code', {
+                              method: 'POST',
+                              headers: { 
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${localStorage.getItem('token')}` 
+                              },
+                              body: JSON.stringify({ email: imamuEmailInput, code: imamuCodeInput })
+                            });
+                            if (res.ok) {
+                              toast.success('Email connected successfully');
+                              window.location.reload();
+                            } else {
+                              const data = await res.json();
+                              toast.error(data.error || 'Invalid code');
+                            }
+                          } catch (e) {
+                            toast.error('Network error');
+                          }
+                        }}
+                        className="px-4 py-2 bg-green-600 text-white text-sm font-bold rounded-xl hover:bg-green-500 transition-colors"
+                      >
+                        Verify
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="p-5 bg-neutral-900 rounded-2xl border border-neutral-800">
@@ -466,6 +608,46 @@ export default function SettingsTab() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+
+        <div className="pt-6 mt-6 border-t border-red-900/30">
+          <h3 className="text-lg font-bold text-red-500 mb-2">Danger Zone</h3>
+          <p className="text-neutral-500 text-sm mb-4">Irreversibly delete your account, posts, articles, and all associated data.</p>
+          
+          <div className="p-5 bg-red-500/5 rounded-2xl border border-red-500/20">
+            <button 
+              onClick={() => {
+                setConfirmModal({
+                  isOpen: true,
+                  config: {
+                    title: 'Delete Account',
+                    message: 'Are you absolutely sure you want to delete your account? All your posts, articles, and data will be permanently deleted. This action cannot be undone!',
+                    isDestructive: true,
+                    onConfirm: async () => {
+                      setConfirmModal({ isOpen: false, config: null });
+                      try {
+                        const res = await fetch('/api/auth/me', {
+                          method: 'DELETE',
+                          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+                        });
+                        if (res.ok) {
+                          toast.success('Account deleted successfully');
+                          logout();
+                        } else {
+                          toast.error('Failed to delete account');
+                        }
+                      } catch (e) {
+                        toast.error('Network error');
+                      }
+                    }
+                  }
+                });
+              }}
+              className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-colors w-full sm:w-auto"
+            >
+              Delete Account Permanently
+            </button>
           </div>
         </div>
       </div>
@@ -588,6 +770,14 @@ export default function SettingsTab() {
 
   return (
     <div className="flex-1 overflow-y-auto custom-scrollbar p-4 md:p-8 bg-neutral-950 h-full relative">
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen} 
+        title={confirmModal.config?.title || ''}
+        message={confirmModal.config?.message || ''}
+        isDestructive={confirmModal.config?.isDestructive}
+        onConfirm={() => confirmModal.config?.onConfirm()}
+        onCancel={() => setConfirmModal({ isOpen: false, config: null })}
+      />
       {activePage === 'main' && renderMain()}
       {activePage === 'privacy' && renderPrivacy()}
       {activePage === 'security' && renderSecurity()}

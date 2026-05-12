@@ -35,8 +35,8 @@ export default function ProfilePopover({ children, username, user: initialUser }
   const displayUser = fetchedUser ? {
     name: fetchedUser.name || fetchedUser.username,
     handle: fetchedUser.username,
-    avatar: fetchedUser.avatarUrl || `https://picsum.photos/seed/${fetchedUser.id}/150/150`,
-    banner: fetchedUser.bannerUrl || `https://picsum.photos/seed/${fetchedUser.id}_banner/400/200`,
+    avatar: fetchedUser.avatarUrl,
+    banner: fetchedUser.bannerUrl,
     bio: fetchedUser.bio || 'No bio added yet.',
   } : initialUser;
 
@@ -169,7 +169,7 @@ export default function ProfilePopover({ children, username, user: initialUser }
             >
               {/* Banner */}
               <OptimizedImage 
-                src={displayUser.banner || 'https://picsum.photos/seed/banner/400/200'}
+                src={displayUser.banner}
                 alt="Banner"
                 variant="banner"
                 className="h-20 w-full"

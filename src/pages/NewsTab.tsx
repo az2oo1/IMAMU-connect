@@ -14,11 +14,11 @@ const NEWS_ITEMS = [
     category: "Campus",
     date: "Mar 28, 2026",
     readTime: "5 min read",
-    image: "https://picsum.photos/seed/science/1200/600",
+    image: null,
     excerpt: "The state-of-the-art facility will house advanced laboratories, collaborative spaces for STEM students, and a new student cafe. Join us for the ribbon-cutting ceremony.",
     featured: true,
     author: "University Press",
-    authorAvatar: "https://picsum.photos/seed/unipress/100/100",
+    authorAvatar: null,
     isFollowedAuthor: true
   },
   {
@@ -27,10 +27,10 @@ const NEWS_ITEMS = [
     category: "Academic",
     date: "Mar 29, 2026",
     readTime: "2 min read",
-    image: "https://picsum.photos/seed/library2/600/400",
+    image: null,
     excerpt: "Make sure to meet with your academic advisor before the April 15th deadline to secure your classes for the upcoming semester.",
     author: "Academic Affairs",
-    authorAvatar: "https://picsum.photos/seed/academics/100/100",
+    authorAvatar: null,
     isFollowedAuthor: false
   },
   {
@@ -39,10 +39,10 @@ const NEWS_ITEMS = [
     category: "Sports",
     date: "Mar 30, 2026",
     readTime: "3 min read",
-    image: "https://picsum.photos/seed/basketball/600/400",
+    image: null,
     excerpt: "A thrilling overtime victory secures our spot in the regional championship game this weekend. Get your tickets now!",
     author: "Athletics Dept",
-    authorAvatar: "https://picsum.photos/seed/athletics/100/100",
+    authorAvatar: null,
     isFollowedAuthor: true
   },
   {
@@ -51,10 +51,10 @@ const NEWS_ITEMS = [
     category: "Events",
     date: "Mar 30, 2026",
     readTime: "4 min read",
-    image: "https://picsum.photos/seed/lecture/600/400",
+    image: null,
     excerpt: "Dr. Sarah Jenkins will be speaking at the main auditorium this Friday at 4 PM. Open to all students and faculty.",
     author: "Computer Science Dept",
-    authorAvatar: "https://picsum.photos/seed/csdept/100/100",
+    authorAvatar: null,
     isFollowedAuthor: false
   },
   {
@@ -63,10 +63,10 @@ const NEWS_ITEMS = [
     category: "Campus",
     date: "Mar 27, 2026",
     readTime: "3 min read",
-    image: "https://picsum.photos/seed/nature/600/400",
+    image: null,
     excerpt: "Thanks to student efforts, we have reduced campus plastic waste by 40% this semester, hitting our sustainability target early.",
     author: "Student Council",
-    authorAvatar: "https://picsum.photos/seed/council/100/100",
+    authorAvatar: null,
     isFollowedAuthor: true
   }
 ];
@@ -122,7 +122,7 @@ export default function NewsTab() {
             category: a.tag || 'General',
             date: new Date(a.createdAt).toLocaleDateString(),
             readTime: '5 min read',
-            image: a.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null) || 'https://picsum.photos/seed/news/800/600',
+            image: a.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null),
             images: parsedImages,
             excerpt: a.content,
             author: a.club ? { id: a.clubId, isClub: true, name: a.club.name, avatar: a.club.avatarUrl } : a.author || 'University Press',

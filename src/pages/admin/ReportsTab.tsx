@@ -173,7 +173,8 @@ export default function ReportsTab() {
             body: JSON.stringify({ 
               type, 
               reason: modalReason, 
-              durationDays: actionType === 'SUSPEND' ? parseInt(modalDuration) : 0 
+              durationDays: actionType === 'SUSPEND' ? parseInt(modalDuration) : 0,
+              reportId: report.id
             })
           });
         }
@@ -187,7 +188,7 @@ export default function ReportsTab() {
         }
 
         // Auto-resolve for serious actions
-        if (['DELETE_FILE', 'DELETE_CLUB', 'BAN_USER', 'BAN', 'DELETE_MESSAGE'].includes(actionType)) {
+        if (['DELETE_FILE', 'DELETE_CLUB', 'BAN_USER', 'BAN', 'DELETE_MESSAGE', 'WARNING', 'SUSPEND'].includes(actionType)) {
           const updated = await handleUpdateStatus(report.id, 'RESOLVED', undefined, modalReason || `Action taken: ${actionType}`);
           if (updated) {
             setModerationAction(null);

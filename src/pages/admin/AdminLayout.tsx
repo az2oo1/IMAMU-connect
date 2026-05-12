@@ -128,18 +128,9 @@ export default function AdminLayout() {
       }
     }
     
-    function handleGlobalKeyDown(event: KeyboardEvent) {
-      if ((event.metaKey || event.ctrlKey) && event.key === 'k') {
-        event.preventDefault();
-        setIsGlobalSearchOpen(true);
-      }
-    }
-
     document.addEventListener("mousedown", handleClickOutside);
-    window.addEventListener("keydown", handleGlobalKeyDown);
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
-      window.removeEventListener("keydown", handleGlobalKeyDown);
     };
   }, []);
 
@@ -197,11 +188,11 @@ export default function AdminLayout() {
 
   const ALL_NAV_ITEMS = [
     { to: '/admin/users', icon: Users, label: 'Users' },
-    { to: '/admin/roles', icon: Users, label: 'Roles' }, // we don't import Network, so fallback to Users or import it
     { to: '/admin/clubs', icon: Tent, label: 'Clubs' }, // Tent is used for Clubs
     { to: '/admin/courses', icon: BookOpen, label: 'Courses' },
     { to: '/admin/news', icon: Newspaper, label: 'News' },
     { to: '/admin/reports', icon: Shield, label: 'Reports' }, // AlertTriangle -> Shield
+    { to: '/admin/settings', icon: Settings, label: 'Settings' },
   ];
 
   const sortedNavItems = [...ALL_NAV_ITEMS].sort((a, b) => {
@@ -313,13 +304,10 @@ export default function AdminLayout() {
                 <button
                   onClick={() => setIsGlobalSearchOpen(true)}
                   className="hidden md:flex items-center gap-2 px-3 py-1.5 text-sm text-neutral-400 hover:text-white bg-neutral-900 border border-neutral-800 rounded-lg hover:bg-neutral-800 transition-colors focus:outline-none"
-                  title="Search (Cmd+K)"
+                  title="Search"
                 >
                   <Search className="w-4 h-4" />
                   <span>Search</span>
-                  <span className="text-xs bg-neutral-800 px-1.5 py-0.5 rounded text-neutral-500 font-mono flex items-center">
-                    <span className="text-[10px] mr-0.5">⌘</span>K
-                  </span>
                 </button>
                 <button
                   onClick={() => setIsGlobalSearchOpen(true)}
@@ -414,7 +402,7 @@ export default function AdminLayout() {
                   className="flex items-center gap-2 hover:bg-neutral-900 p-1.5 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500/50"
                 >
                   <OptimizedImage 
-                    src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id || 'default'}/100/100`} 
+                    src={user?.avatarUrl} 
                     alt="Profile" 
                     variant="small"
                     className="w-8 h-8 rounded-full border border-neutral-800 object-cover"
@@ -632,7 +620,7 @@ export default function AdminLayout() {
                   )}
                   <span className="relative z-10 flex flex-col items-center gap-1">
                     <OptimizedImage 
-                      src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id || 'default'}/100/100`} 
+                      src={user?.avatarUrl} 
                       alt="Profile" 
                       variant="small"
                       className="w-5 h-5 rounded-full border border-neutral-800 object-cover"

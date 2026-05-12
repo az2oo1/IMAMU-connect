@@ -39,13 +39,13 @@ export default function ArticlePage() {
             category: found.tag || 'General',
             date: new Date(found.createdAt).toLocaleDateString(),
             readTime: '5 min read',
-            image: found.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null) || `https://picsum.photos/seed/${found.id}/800/600`,
+            image: found.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null),
             images: parsedImages,
             excerpt: found.content,
             author: found.club ? { id: found.clubId, isClub: true, name: found.club.name, avatar: found.club.avatarUrl, bio: found.club.description, username: found.club.name } : found.author,
             authorAvatar: found.club ? found.club.avatarUrl : found.author?.avatarUrl
           });
-          setSelectedImage(found.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null) || `https://picsum.photos/seed/${found.id}/800/600`);
+          setSelectedImage(found.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null));
           setIsSaved(found.isSaved || false);
 
           if (token && (found.authorId || found.clubId)) {
@@ -152,7 +152,7 @@ export default function ArticlePage() {
           <div className="flex flex-1 items-center gap-4">
             {article.author?.isClub ? (
               <a href={`/clubs/${article.author.id}`} className="group flex items-center gap-4 hover:opacity-100 transition-opacity">
-                <OptimizedImage src={authorAvatar || `https://picsum.photos/seed/${authorName}/100/100`} alt={authorName} variant="small" className="w-12 h-12 rounded-full object-cover shadow-sm ring-1 ring-neutral-800 group-hover:ring-neutral-700 transition-all bg-neutral-900" />
+                <OptimizedImage src={authorAvatar} alt={authorName} variant="small" className="w-12 h-12 rounded-full object-cover shadow-sm ring-1 ring-neutral-800 group-hover:ring-neutral-700 transition-all bg-neutral-900" />
                 <div>
                   <div className="font-bold text-white flex items-center gap-2 group-hover:text-primary-400 transition-colors">
                      {authorName}
@@ -167,13 +167,13 @@ export default function ArticlePage() {
                 user={{
                   name: authorName,
                   handle: authorHandle,
-                  avatar: authorAvatar || `https://picsum.photos/seed/${authorName}/100/100`,
+                  avatar: authorAvatar,
                   bio: 'News author and contributor.',
                   id: article.author?.id
                 }}
               >
                 <div className="group flex items-center gap-4 cursor-pointer hover:opacity-100 transition-opacity">
-                  <OptimizedImage src={authorAvatar || `https://picsum.photos/seed/${authorName}/100/100`} alt={authorName} variant="small" className="w-12 h-12 rounded-full object-cover shadow-sm ring-1 ring-neutral-800 group-hover:ring-neutral-700 transition-all bg-neutral-900" />
+                  <OptimizedImage src={authorAvatar} alt={authorName} variant="small" className="w-12 h-12 rounded-full object-cover shadow-sm ring-1 ring-neutral-800 group-hover:ring-neutral-700 transition-all bg-neutral-900" />
                   <div>
                     <div className="font-bold text-white flex items-center gap-2 group-hover:text-primary-400 transition-colors">
                        {authorName}

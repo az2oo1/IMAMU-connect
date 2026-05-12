@@ -121,7 +121,7 @@ export default function AdminLogin() {
                 className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-neutral-800 hover:bg-neutral-700 text-white rounded-xl transition-all border border-neutral-700"
               >
                 <img 
-                  src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100/100`} 
+                  src={user.avatarUrl} 
                   alt="" 
                   className="w-6 h-6 rounded-full"
                   referrerPolicy="no-referrer"

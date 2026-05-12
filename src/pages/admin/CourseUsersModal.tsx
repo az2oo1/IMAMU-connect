@@ -94,7 +94,7 @@ export default function CourseUsersModal({ courseId, courseName, onClose }: Cour
                   >
                     <div className="flex items-center gap-3">
                       <img 
-                        src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/100/100`} 
+                        src={user.avatarUrl} 
                         alt={user.name} 
                         className="w-10 h-10 rounded-full border border-neutral-700"
                         referrerPolicy="no-referrer"

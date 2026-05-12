@@ -29,13 +29,6 @@ export default function GlobalSearchModal({ isOpen, onClose }: GlobalSearchModal
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
-        e.preventDefault();
-        if (!isOpen) { 
-          // Note: the opening is handled in Layout.tsx, maybe not here
-          // but we can expose a custom event or context. We'll handle shortcut in Layout.tsx
-        }
-      }
       if (e.key === 'Escape' && isOpen) {
         onClose();
       }

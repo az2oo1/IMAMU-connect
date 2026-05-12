@@ -1223,12 +1223,12 @@ export default function GroupsTab() {
                                 name: senderName,
                                 handle: msg.author?.username || senderName.toLowerCase().replace(/\s+/g, ''),
                                 bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
-                                avatar: msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`
+                                avatar: msg.author?.avatarUrl
                               }}
                             >
                               <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden cursor-pointer">
                                 <img 
-                                  src={msg.author?.avatarUrl || `https://picsum.photos/seed/${msg.authorId}/100/100`} 
+                                  src={msg.author?.avatarUrl} 
                                   alt={senderName} 
                                   className="w-full h-full object-cover" 
                                   referrerPolicy="no-referrer" 
@@ -1454,8 +1454,8 @@ export default function GroupsTab() {
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-full bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-400 overflow-hidden">
-                  {group.avatarUrl ? (
-                    <img src={group.avatarUrl} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {(group.course?.avatarUrl || group.avatarUrl) ? (
+                    <img src={(group.course?.avatarUrl || group.avatarUrl)!} alt={group.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <span className="text-sm font-bold">{getGroupInitials(group.name)}</span>
                   )}
@@ -1493,8 +1493,8 @@ export default function GroupsTab() {
                 onClick={() => setShowGroupInfo(true)}
               >
                 <div className="w-10 h-10 rounded-full bg-neutral-950 border border-neutral-800 flex items-center justify-center text-neutral-400 md:hidden overflow-hidden">
-                  {activeGroup.avatarUrl ? (
-                    <img src={activeGroup.avatarUrl} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {(activeGroup.course?.avatarUrl || activeGroup.avatarUrl) ? (
+                    <img src={(activeGroup.course?.avatarUrl || activeGroup.avatarUrl)!} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <span className="text-sm font-bold">{getGroupInitials(activeGroup.name)}</span>
                   )}
@@ -1772,7 +1772,7 @@ export default function GroupsTab() {
                             >
                               <div className="w-6 h-6 rounded-full bg-neutral-700 overflow-hidden shrink-0">
                                 <img 
-                                  src={member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`} 
+                                  src={member.avatarUrl} 
                                   alt={member.name || member.username} 
                                   className="w-full h-full object-cover" 
                                   referrerPolicy="no-referrer" 
@@ -1880,8 +1880,8 @@ export default function GroupsTab() {
               <div className="flex-1 overflow-y-auto custom-scrollbar">
               <div className="p-6 text-center border-b border-neutral-800">
                 <div className="w-20 h-20 mx-auto rounded-2xl bg-neutral-800 border-2 border-neutral-700 flex items-center justify-center text-neutral-400 mb-4 shadow-inner overflow-hidden relative group">
-                  {activeGroup?.avatarUrl ? (
-                    <img src={activeGroup.avatarUrl} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                  {(activeGroup?.course?.avatarUrl || activeGroup?.avatarUrl) ? (
+                    <img src={(activeGroup?.course?.avatarUrl || activeGroup?.avatarUrl)!} alt={activeGroup.name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : (
                     <span className="text-2xl font-bold">{getGroupInitials(activeGroup?.name || '')}</span>
                   )}
@@ -1992,12 +1992,12 @@ export default function GroupsTab() {
                             name: member.name || member.username,
                             handle: member.username,
                             bio: 'Student at Imam Mohammad Ibn Saud Islamic University.',
-                            avatar: member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`
+                            avatar: member.avatarUrl
                           }}
                         >
                           <div className="w-8 h-8 rounded-full bg-neutral-800 flex items-center justify-center text-xs font-bold text-neutral-500 border border-neutral-700 overflow-hidden">
                             <img 
-                              src={member.avatarUrl || `https://picsum.photos/seed/${member.id}/100/100`} 
+                              src={member.avatarUrl} 
                               alt={member.name || member.username} 
                               className="w-full h-full object-cover" 
                               referrerPolicy="no-referrer" 
@@ -2149,7 +2149,7 @@ export default function GroupsTab() {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-500 block mb-2">Message to report</span>
                   <div className="flex items-center gap-3 mb-2">
                     <img referrerPolicy="no-referrer" 
-                      src={reportingMessage.author?.avatarUrl || `https://picsum.photos/seed/${reportingMessage.authorId}/50/50`} 
+                      src={reportingMessage.author?.avatarUrl} 
                       className="w-6 h-6 rounded-full object-cover" 
                       alt=""
                     />

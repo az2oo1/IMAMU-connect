@@ -1,7 +1,9 @@
 import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Save, Shield, Trash2, Upload, Image as ImageIcon } from 'lucide-react';
+import { X, Save, Shield, Trash2, Upload, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
+import ImageUploadInput from '../../components/ImageUploadInput';
+import ResourceLinksInput from '../../components/ResourceLinksInput';
 
 interface EditCourseModalProps {
   course: any;
@@ -42,11 +44,20 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
   const [bannerUrl, setBannerUrl] = useState(course.bannerUrl || '');
   
   const [members, setMembers] = useState<any[]>([]);
+  const [availableTags, setAvailableTags] = useState<any[]>([]);
   const [isLoadingMembers, setIsLoadingMembers] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    fetch('/api/course-tags')
+      .then(res => res.json())
+      .then(data => setAvailableTags(data.tags || []))
+      .catch(console.error);
+  }, []);
 
   useEffect(() => {
     if (activeTab === 'members') {
@@ -74,6 +85,7 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
   const handleUpdateDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSaving(true);
     try {
       const res = await fetch(`/api/courses/${course.id}`, {
         method: 'PUT',
@@ -89,6 +101,8 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
     } catch (err: any) {
       toast.error(err.message);
       setError(err.message);
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -221,137 +235,80 @@ export default function EditCourseModal({ course, onClose, onUpdate }: EditCours
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-sm font-medium text-neutral-300">Free Resources</label>
-                    <button 
-                      type="button" 
-                      onClick={() => setActiveLinkTarget(activeLinkTarget === 'free' ? null : 'free')}
-                      className="text-xs text-primary-400 hover:text-primary-300 bg-primary-500/10 px-2 py-1 rounded"
-                    >
-                      + Add Named Link
-                    </button>
-                  </div>
-                  {activeLinkTarget === 'free' && (
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 mb-3 flex flex-col gap-2">
-                      <input type="text" placeholder="Link Name (e.g. Textbook)" value={linkName} onChange={e => setLinkName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-primary-500" />
-                      <input type="url" placeholder="URL (e.g. https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-primary-500" />
-                      <div className="flex justify-end gap-2 mt-1">
-                        <button type="button" onClick={() => setActiveLinkTarget(null)} className="text-xs text-neutral-400">Cancel</button>
-                        <button type="button" onClick={handleAddLink} className="text-xs bg-primary-600 text-white px-3 py-1 rounded">Insert</button>
-                      </div>
-                    </div>
-                  )}
-                  <textarea
-                    value={freeResourcesUrl}
-                    onChange={(e) => setFreeResourcesUrl(e.target.value)}
-                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500 min-h-[100px]"
-                    placeholder="Enter links for free resources... You can also use Markdown like [My Link](https://...)"
-                  />
-                </div>
-                <div>
-                  <div className="flex justify-between items-center mb-1.5">
-                    <label className="block text-sm font-medium text-neutral-300">Paid Resources</label>
-                    <button 
-                      type="button" 
-                      onClick={() => setActiveLinkTarget(activeLinkTarget === 'paid' ? null : 'paid')}
-                      className="text-xs text-amber-500 hover:text-amber-400 bg-amber-500/10 px-2 py-1 rounded"
-                    >
-                      + Add Named Link
-                    </button>
-                  </div>
-                  {activeLinkTarget === 'paid' && (
-                    <div className="bg-neutral-900 border border-neutral-800 rounded-lg p-3 mb-3 flex flex-col gap-2">
-                      <input type="text" placeholder="Link Name (e.g. Past Papers)" value={linkName} onChange={e => setLinkName(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-amber-500" />
-                      <input type="url" placeholder="URL (e.g. https://...)" value={linkUrl} onChange={e => setLinkUrl(e.target.value)} className="w-full bg-neutral-950 border border-neutral-800 rounded px-3 py-1.5 text-sm text-white focus:border-amber-500" />
-                      <div className="flex justify-end gap-2 mt-1">
-                        <button type="button" onClick={() => setActiveLinkTarget(null)} className="text-xs text-neutral-400">Cancel</button>
-                        <button type="button" onClick={handleAddLink} className="text-xs bg-amber-600 text-white px-3 py-1 rounded">Insert</button>
-                      </div>
-                    </div>
-                  )}
-                  <textarea
-                    value={paidResourcesUrl}
-                    onChange={(e) => setPaidResourcesUrl(e.target.value)}
-                    className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 min-h-[100px]"
-                    placeholder="Enter links for paid resources... You can also use Markdown like [My Link](https://...)"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Tags (comma separated)</label>
-                <input
-                  type="text"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  className="w-full bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
-                  placeholder="e.g. Computer Science, Programming"
+                <ResourceLinksInput
+                  label="Free Resources"
+                  value={freeResourcesUrl}
+                  onChange={setFreeResourcesUrl}
+                  color="primary"
+                />
+                <ResourceLinksInput
+                  label="Paid Resources"
+                  value={paidResourcesUrl}
+                  onChange={setPaidResourcesUrl}
+                  color="amber"
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-neutral-300 mb-1.5">Tags</label>
+                <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                  {availableTags.map(tag => {
+                    const isSelected = tags.split(',').map(t => t.trim()).includes(tag.name);
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => {
+                          let currentTags = tags.split(',').map(t => t.trim()).filter(Boolean);
+                          if (isSelected) {
+                            currentTags = currentTags.filter(t => t !== tag.name);
+                          } else {
+                            currentTags.push(tag.name);
+                          }
+                          setTags(currentTags.join(', '));
+                        }}
+                        className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${
+                          isSelected 
+                            ? 'bg-primary-500/20 text-primary-400 border-primary-500/50' 
+                            : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-white hover:border-neutral-600'
+                        }`}
+                      >
+                        {tag.name}
+                      </button>
+                    );
+                  })}
+                  {availableTags.length === 0 && (
+                    <span className="text-sm text-neutral-500 italic py-1.5">No tags available. Set them up in the Course Management tab.</span>
+                  )}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1.5">Avatar Image</label>
-                  <div className="flex items-center gap-4">
-                    {avatarUrl ? (
-                      <img referrerPolicy="no-referrer" src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
-                    ) : (
-                      <div className="w-12 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
-                        <ImageIcon className="w-5 h-5 text-neutral-500" />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
-                    >
-                      <Upload className="w-4 h-4" /> Upload
-                    </button>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={(e) => handleFileUpload(e, 'avatar')}
-                      className="hidden"
-                      accept="image/*"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-neutral-300 mb-1.5">Banner Image</label>
-                  <div className="flex items-center gap-4">
-                    {bannerUrl ? (
-                      <img referrerPolicy="no-referrer" src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
-                    ) : (
-                      <div className="w-20 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
-                        <ImageIcon className="w-5 h-5 text-neutral-500" />
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => bannerInputRef.current?.click()}
-                      className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
-                    >
-                      <Upload className="w-4 h-4" /> Upload
-                    </button>
-                    <input
-                      type="file"
-                      ref={bannerInputRef}
-                      onChange={(e) => handleFileUpload(e, 'banner')}
-                      className="hidden"
-                      accept="image/*"
-                    />
-                  </div>
-                </div>
+                <ImageUploadInput
+                  label="Avatar Image"
+                  value={avatarUrl}
+                  onChange={setAvatarUrl}
+                  type="avatar"
+                  uploadUrl={`/api/upload?type=course&id=${course.id}`}
+                />
+                
+                <ImageUploadInput
+                  label="Banner Image"
+                  value={bannerUrl}
+                  onChange={setBannerUrl}
+                  type="banner"
+                  uploadUrl={`/api/upload?type=course&id=${course.id}`}
+                />
               </div>
 
               <div className="pt-4 flex justify-end">
                 <button
                   type="submit"
-                  className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-2.5 rounded-xl font-bold transition-colors"
+                  disabled={isSaving}
+                  className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-2.5 rounded-xl font-bold transition-colors disabled:opacity-50"
                 >
-                  <Save className="w-4 h-4" />
-                  Save Changes
+                  {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                  {isSaving ? 'Saving...' : 'Save Changes'}
                 </button>
               </div>
             </form>

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { X, Book, ExternalLink, Link as LinkIcon, BookOpen, UserPlus, Users } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import FormattedText from './FormattedText';
+import { parseMarkdownLinks, Link } from './ResourceLinksInput';
 
 interface CourseDetailsModalProps {
   isOpen: boolean;
@@ -149,7 +150,7 @@ export default function CourseDetailsModal({ isOpen, onClose, courseId, onNaviga
                   <div>
                     <h3 className="text-sm font-bold text-neutral-400 tracking-wider uppercase mb-3 px-1">Overview</h3>
                     <div className="bg-neutral-800/50 rounded-xl p-5 border border-neutral-800/50">
-                      <FormattedText text={course.description} />
+                      <FormattedText text={course.description} hidePreviews={true} />
                     </div>
                   </div>
                 )}
@@ -158,7 +159,7 @@ export default function CourseDetailsModal({ isOpen, onClose, courseId, onNaviga
                   <div>
                     <h3 className="text-sm font-bold text-neutral-400 tracking-wider uppercase mb-3 px-1">توصيف (Course Details)</h3>
                     <div className="bg-neutral-800/50 rounded-xl p-5 border border-neutral-800/50 text-neutral-300">
-                      <FormattedText text={course.syllabus} />
+                      <FormattedText text={course.syllabus} hidePreviews={true} />
                     </div>
                   </div>
                 )}
@@ -167,24 +168,46 @@ export default function CourseDetailsModal({ isOpen, onClose, courseId, onNaviga
                   <div>
                     <h3 className="text-sm font-bold text-neutral-400 tracking-wider uppercase mb-3 px-1">Resources</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {course.freeResourcesUrl && (
+                      {course.freeResourcesUrl && parseMarkdownLinks(course.freeResourcesUrl).length > 0 && (
                         <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-4">
-                          <div className="flex items-center gap-2 text-blue-400 font-bold mb-2">
+                          <div className="flex items-center gap-2 text-blue-400 font-bold mb-3">
                             <LinkIcon className="w-4 h-4" /> Free Resources
                           </div>
-                          <div className="text-sm text-neutral-300 break-words">
-                            <FormattedText text={course.freeResourcesUrl} />
+                          <div className="flex flex-col gap-2">
+                            {parseMarkdownLinks(course.freeResourcesUrl).map((link: Link, i: number) => (
+                              <a 
+                                key={i}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between gap-2 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 text-blue-300 font-medium rounded-lg transition-colors border border-blue-500/20 hover:border-blue-500/40"
+                              >
+                                <span className="truncate">{link.name}</span>
+                                <ExternalLink className="w-4 h-4 shrink-0 opacity-50" />
+                              </a>
+                            ))}
                           </div>
                         </div>
                       )}
                       
-                      {course.paidResourcesUrl && (
+                      {course.paidResourcesUrl && parseMarkdownLinks(course.paidResourcesUrl).length > 0 && (
                         <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4">
-                          <div className="flex items-center gap-2 text-amber-400 font-bold mb-2">
+                          <div className="flex items-center gap-2 text-amber-400 font-bold mb-3">
                             <LinkIcon className="w-4 h-4" /> Paid Resources
                           </div>
-                          <div className="text-sm text-neutral-300 break-words">
-                            <FormattedText text={course.paidResourcesUrl} />
+                          <div className="flex flex-col gap-2">
+                            {parseMarkdownLinks(course.paidResourcesUrl).map((link: Link, i: number) => (
+                              <a 
+                                key={i}
+                                href={link.url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="flex items-center justify-between gap-2 px-3 py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 font-medium rounded-lg transition-colors border border-amber-500/20 hover:border-amber-500/40"
+                              >
+                                <span className="truncate">{link.name}</span>
+                                <ExternalLink className="w-4 h-4 shrink-0 opacity-50" />
+                              </a>
+                            ))}
                           </div>
                         </div>
                       )}

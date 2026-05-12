@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { Bell, CheckCircle2, MessageSquare, AlertTriangle } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import { useSocket } from '../contexts/SocketContext';
 import { useNavigate } from 'react-router-dom';
+import AppealWarningModal from './AppealWarningModal';
 
 export default function NotificationsTab() {
   const [notifications, setNotifications] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [appealingId, setAppealingId] = useState<string | null>(null);
   const { isAuthenticated } = useUser();
   const { socket } = useSocket();
   const navigate = useNavigate();
@@ -65,6 +67,7 @@ export default function NotificationsTab() {
       case 'REPORT_ANSWER': return { icon: CheckCircle2, color: 'text-emerald-400', bg: 'bg-emerald-400/10' };
       case 'SYSTEM': return { icon: Bell, color: 'text-primary-400', bg: 'bg-primary-400/10' };
       case 'MESSAGE': return { icon: MessageSquare, color: 'text-primary-400', bg: 'bg-primary-400/10' };
+      case 'WARNING': return { icon: AlertTriangle, color: 'text-yellow-400', bg: 'bg-yellow-400/10' };
       default: return { icon: Bell, color: 'text-neutral-400', bg: 'bg-neutral-400/10' };
     }
   };
@@ -115,6 +118,19 @@ export default function NotificationsTab() {
                       {notification.content}
                     </p>
                     <p className="text-xs text-neutral-500 mt-1.5">{new Date(notification.createdAt).toLocaleDateString()}</p>
+                    {notification.type === 'WARNING' && (
+                      <div className="mt-3">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAppealingId(notification.id);
+                          }}
+                          className="px-3 py-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 text-xs font-medium rounded-lg transition-colors border border-neutral-700"
+                        >
+                          Contact Support / Appeal
+                        </button>
+                      </div>
+                    )}
                   </div>
                   {!notification.read && (
                     <div className="w-2.5 h-2.5 bg-red-500 rounded-full mt-2 shrink-0"></div>
@@ -125,6 +141,15 @@ export default function NotificationsTab() {
           )}
         </div>
       </div>
+      
+      <AnimatePresence>
+        {appealingId && (
+          <AppealWarningModal 
+            notificationId={appealingId} 
+            onClose={() => setAppealingId(null)} 
+          />
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

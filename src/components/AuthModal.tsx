@@ -6,7 +6,7 @@ import { useUser } from '../contexts/UserContext';
 import { cn } from './Layout';
 import { startAuthentication } from '@simplewebauthn/browser';
 
-type AuthMode = 'login' | 'signup_main' | 'signup_verify_code' | 'signup_student_email';
+type AuthMode = 'login' | 'signup_main' | 'signup_verify_code' | 'signup_student_email' | 'signup_google_mock';
 
 export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
   const { login, register } = useUser();
@@ -24,6 +24,9 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   
+  // Google mock
+  const [googleAuthEmail, setGoogleAuthEmail] = useState('');
+
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -46,7 +49,7 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
   }, [isOpen]);
 
   useEffect(() => {
-    if (mode === 'signup_main' && username.length > 2) {
+    if ((mode === 'signup_main' || mode === 'signup_google_mock') && username.length > 2) {
       const checkAvailability = async () => {
         setUsernameStatus('checking');
         try {
@@ -63,7 +66,7 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
       };
       const timer = setTimeout(checkAvailability, 500);
       return () => clearTimeout(timer);
-    } else if (mode === 'signup_main') {
+    } else if (mode === 'signup_main' || mode === 'signup_google_mock') {
       setUsernameStatus('idle');
     }
   }, [username, mode]);
@@ -154,10 +157,28 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
       toast.success('Verification code sent to your email');
       setMode('signup_verify_code');
     } else if (mode === 'signup_verify_code') {
-      if (verificationCode !== '1234') {
-        // Just a mock check, or accept anything
+      setLoading(true);
+      try {
+        const res = await fetch('/api/auth/otp-status');
+        const data = await res.json();
+        
+        if (data.enabled) {
+          if (verificationCode !== '12345' && verificationCode !== '000000') {
+             setLoading(false);
+             return setError('Invalid verification code');
+          }
+        } else {
+          if (verificationCode !== '12345') {
+             setLoading(false);
+             return setError('Invalid mock verification code (use 12345)');
+          }
+        }
+        setMode('signup_student_email');
+      } catch (e: any) {
+        setError('Verification failed');
+      } finally {
+        setLoading(false);
       }
-      setMode('signup_student_email');
     } else if (mode === 'signup_student_email') {
       setLoading(true);
       try {
@@ -166,6 +187,21 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
         onClose();
       } catch (err: any) {
         setError(err.message || 'Failed to create account');
+      } finally {
+        setLoading(false);
+      }
+    } else if (mode === 'signup_google_mock') {
+      if (!googleAuthEmail) return setError('Email is required');
+      if (usernameStatus === 'taken') return setError('Please choose an available username');
+      if (username.length < 3) return setError('Username must be at least 3 characters');
+      setLoading(true);
+      try {
+        // Here we simulate Google auth with a temporary password and auto-verification
+        await register(username, "google_auth_placeholder123", "", googleAuthEmail);
+        toast.success("Signed up with Google successfully!");
+        onClose();
+      } catch (err: any) {
+        setError(err.message || 'Failed to sign up with Google');
       } finally {
         setLoading(false);
       }
@@ -194,7 +230,10 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
 
       <button
         type="button"
-        onClick={() => toast.info("Google Sign-In will be implemented soon!")}
+        onClick={() => {
+          setGoogleAuthEmail('');
+          setMode('signup_google_mock');
+        }}
         className="w-full bg-white text-black hover:bg-neutral-200 font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-3"
       >
         <svg className="w-5 h-5" viewBox="0 0 24 24">
@@ -231,6 +270,7 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
                   onClick={() => {
                     if (mode === 'signup_verify_code') setMode('signup_main');
                     else if (mode === 'signup_student_email') setMode('signup_verify_code');
+                    else if (mode === 'signup_google_mock') setMode('login');
                   }}
                   className="absolute left-4 p-1 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
                 >
@@ -400,12 +440,55 @@ export default function AuthModal({ isOpen, onClose }: { isOpen: boolean; onClos
                     </motion.div>
                   )}
 
+                  {mode === 'signup_google_mock' && (
+                    <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-300 mb-1">Google Email</label>
+                        <input
+                          type="email"
+                          value={googleAuthEmail}
+                          onChange={(e) => setGoogleAuthEmail(e.target.value)}
+                          className="w-full bg-neutral-800 border border-neutral-700 rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          placeholder="you@gmail.com"
+                          required
+                          autoFocus
+                        />
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-neutral-300 mb-1">Choose a Username</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={username}
+                            onChange={(e) => setUsername(e.target.value)}
+                            className={cn(
+                              "w-full bg-neutral-800 border rounded-xl px-4 py-2.5 text-white focus:outline-none focus:ring-2",
+                              usernameStatus === 'available' ? "border-green-500/50 focus:ring-green-500" :
+                              usernameStatus === 'taken' ? "border-red-500/50 focus:ring-red-500" :
+                              "border-neutral-700 focus:ring-primary-500"
+                            )}
+                            placeholder="e.g. campus_legend"
+                            required
+                          />
+                          <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                            {usernameStatus === 'checking' && <div className="w-4 h-4 border-2 border-primary-500 border-t-transparent rounded-full animate-spin" />}
+                            {usernameStatus === 'available' && <CheckCircle2 className="w-5 h-5 text-green-500" />}
+                            {usernameStatus === 'taken' && <XCircle className="w-5 h-5 text-red-500" />}
+                          </div>
+                        </div>
+                        {usernameStatus === 'taken' && <p className="text-red-400 text-xs mt-1">Username is already taken</p>}
+                        {usernameStatus === 'available' && <p className="text-green-500 text-xs mt-1">Username is available!</p>}
+                      </div>
+                    </motion.div>
+                  )}
+
                   <button
                     type="submit"
                     disabled={loading || usernameStatus === 'checking'}
                     className="w-full bg-primary-600 hover:bg-primary-500 text-white font-medium py-3 rounded-xl transition-colors disabled:opacity-50 mt-4"
                   >
-                    {loading ? 'Please wait...' : (mode === 'signup_student_email' ? 'Make Account' : 'Continue')}
+                    {loading ? 'Please wait...' : (mode === 'signup_student_email' || mode === 'signup_google_mock' ? 'Make Account' : 'Continue')}
                   </button>
 
                   <p className="text-center text-sm text-neutral-400 mt-4">

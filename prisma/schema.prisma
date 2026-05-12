@@ -9,63 +9,65 @@ datasource db {
 }
 
 model User {
-  id            String    @id @default(uuid())
-  username      String    @unique
-  passwordHash  String?
-  studentEmail  String?   @unique
-  googleId      String?   @unique
-  googleEmail   String?   @unique
-  name          String?
-  avatarUrl     String?
-  bannerUrl     String?
-  bio           String?
-  
-  role          String    @default("USER") // USER, ADMIN, NEWS_WRITER
-  isBanned      Boolean   @default(false)
-  isSuspended   Boolean   @default(false)
-  suspensionExpires DateTime?
+  id           String  @id @default(uuid())
+  username     String  @unique
+  passwordHash String?
+  studentEmail String? @unique
+  googleId     String? @unique
+  googleEmail  String? @unique
+  name         String?
+  avatarUrl    String?
+  bannerUrl    String?
+  bio          String?
 
-  links         UserLink[]
-  articles      NewsArticle[]
-  messages      Message[]
-  deletedMessages Message[] @relation("MessageDeletedBy")
-  logs          Log[]
-  
-  adminOfGroups Group[]   @relation("GroupAdmins")
-  memberOfGroups Group[]  @relation("GroupMembers")
+  role              String    @default("USER") // USER, ADMIN, NEWS_WRITER
+  isBanned          Boolean   @default(false)
+  isSuspended       Boolean   @default(false)
+  suspensionExpires DateTime?
+  isPrivate         Boolean   @default(false)
+
+  links           UserLink[]
+  articles        NewsArticle[]
+  messages        Message[]
+  deletedMessages Message[]     @relation("MessageDeletedBy")
+  logs            Log[]
+
+  adminOfGroups  Group[] @relation("GroupAdmins")
+  memberOfGroups Group[] @relation("GroupMembers")
 
   // Social & Engagement
-  following       UserFollows[] @relation("UserFollowing")
-  followers       UserFollows[] @relation("UserFollowers")
-  clubFollowing   ClubFollows[] @relation("ClubFollowing")
-  savedArticles   SavedArticle[] @relation("UserSavedArticles")
+  following     UserFollows[]  @relation("UserFollowing")
+  followers     UserFollows[]  @relation("UserFollowers")
+  clubFollowing ClubFollows[]  @relation("ClubFollowing")
+  savedArticles SavedArticle[] @relation("UserSavedArticles")
 
   // New relations from user schema
-  posts            Post[]
-  comments         Comment[]
-  enrollments      Enrollment[]
-  clubMemberships  ClubMember[]
-  aiChats          AiInteraction[]
-  notifications    Notification[]
-  uploadedFiles    AcademicFile[] @relation("FileUploader")
-  approvedFiles    AcademicFile[] @relation("FileApprover")
-  filedReports     Report[]       @relation("UserFiledReports")
-  adminNotesWritten Report[]      @relation("ReportAdminNoteAuthor")
+  posts             Post[]
+  comments          Comment[]
+  enrollments       Enrollment[]
+  clubMemberships   ClubMember[]
+  aiChats           AiInteraction[]
+  notifications     Notification[]
+  uploadedFiles     AcademicFile[]  @relation("FileUploader")
+  approvedFiles     AcademicFile[]  @relation("FileApprover")
+  filedReports      Report[]        @relation("UserFiledReports")
+  adminNotesWritten Report[]        @relation("ReportAdminNoteAuthor")
 
   // Forms
-  createdForms     Form[]          @relation("FormCreator")
-  formSubmissions  FormSubmission[] @relation("FormSubmitter")
+  createdForms    Form[]           @relation("FormCreator")
+  formSubmissions FormSubmission[] @relation("FormSubmitter")
 
   passkeys         Passkey[]
+  warnings         Warning[]
   currentChallenge String?
 
   // Organizational Chart Hierarchy
-  managerId     String?
-  manager       User?    @relation("UserManagement", fields: [managerId], references: [id])
-  subordinates  User[]   @relation("UserManagement")
-  orgTitle      String?
+  managerId    String?
+  manager      User?   @relation("UserManagement", fields: [managerId], references: [id], onDelete: SetNull)
+  subordinates User[]  @relation("UserManagement")
+  orgTitle     String?
 
-  createdAt     DateTime  @default(now())
+  createdAt DateTime @default(now())
 
   @@index([username])
   @@index([name])
@@ -75,7 +77,7 @@ model Notification {
   id        String   @id @default(uuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type      String   // MENTION, REPORT_ANSWER, SYSTEM
+  type      String // MENTION, REPORT_ANSWER, SYSTEM
   content   String
   link      String?
   read      Boolean  @default(false)
@@ -83,61 +85,67 @@ model Notification {
 }
 
 model Report {
-  id          String   @id @default(uuid())
-  reporterId  String
-  reporter    User     @relation("UserFiledReports", fields: [reporterId], references: [id])
-  reportedId  String?
-  type        String   // MESSAGE, NEWS, FILE, USER, CLUB
-  contentId   String?
-  reason      String
-  status      String   @default("PENDING") // PENDING, RESOLVED, DISMISSED
-  adminNote   String?
+  id                String    @id @default(uuid())
+  reporterId        String
+  reporter          User      @relation("UserFiledReports", fields: [reporterId], references: [id], onDelete: Cascade)
+  reportedId        String?
+  type              String // MESSAGE, NEWS, FILE, USER, CLUB
+  contentId         String?
+  reason            String
+  status            String    @default("PENDING") // PENDING, RESOLVED, DISMISSED
+  adminNote         String?
   adminNoteAuthorId String?
-  adminNoteAuthor User? @relation("ReportAdminNoteAuthor", fields: [adminNoteAuthorId], references: [id])
+  adminNoteAuthor   User?     @relation("ReportAdminNoteAuthor", fields: [adminNoteAuthorId], references: [id], onDelete: SetNull)
   resolutionMessage String? // New: Message shown to the reporter
-  resolvedAt  DateTime?
-  createdAt   DateTime @default(now())
+  warnings          Warning[]
+  resolvedAt        DateTime?
+  createdAt         DateTime  @default(now())
 }
 
 model UserLink {
-  id        String   @id @default(uuid())
-  url       String
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  url    String
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model NewsArticle {
-  id          String   @id @default(uuid())
-  slug        String   @unique
-  title       String
-  content     String
-  photoUrl    String?  // Main/cover image
-  images      String?  // JSON stringified array of multiple image URLs
-  tag         String?
-  isArchived  Boolean  @default(false)
-  
-  authorId    String
-  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  clubId      String?
-  club        Club?    @relation(fields: [clubId], references: [id], onDelete: Cascade)
-  
-  savedBy     SavedArticle[] @relation("ArticleSavedBy")
+  id         String  @id @default(uuid())
+  slug       String  @unique
+  title      String
+  content    String
+  photoUrl   String? // Main/cover image
+  images     String? // JSON stringified array of multiple image URLs
+  tag        String?
+  isArchived Boolean @default(false)
 
-  createdAt   DateTime @default(now())
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  clubId String?
+  club   Club?   @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  savedBy SavedArticle[] @relation("ArticleSavedBy")
+
+  createdAt DateTime @default(now())
 
   @@index([title])
 }
 
 model NewsTag {
-  id        String   @id @default(uuid())
-  name      String   @unique
+  id   String @id @default(uuid())
+  name String @unique
+}
+
+model CourseTag {
+  id   String @id @default(uuid())
+  name String @unique
 }
 
 model Course {
-  id               String   @id @default(uuid())
+  id               String  @id @default(uuid())
   name             String
-  code             String   @unique
+  code             String  @unique
   description      String?
   syllabus         String?
   freeResourcesUrl String?
@@ -145,7 +153,7 @@ model Course {
   avatarUrl        String?
   bannerUrl        String?
   tags             String?
-  
+
   files       AcademicFile[]
   folders     Folder[]
   groups      Group[]
@@ -156,16 +164,16 @@ model Course {
 }
 
 model Folder {
-  id          String   @id @default(uuid())
-  name        String
-  courseId    String
-  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  parentId    String?
-  parent      Folder?  @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
-  children    Folder[] @relation("FolderToFolder")
-  files       AcademicFile[]
-  createdAt   DateTime @default(now())
-  order       Int      @default(0)
+  id        String         @id @default(uuid())
+  name      String
+  courseId  String
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  parentId  String?
+  parent    Folder?        @relation("FolderToFolder", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[]       @relation("FolderToFolder")
+  files     AcademicFile[]
+  createdAt DateTime       @default(now())
+  order     Int            @default(0)
 }
 
 model AcademicFile {
@@ -179,9 +187,9 @@ model AcademicFile {
   status      String   @default("APPROVED") // APPROVED, PENDING, REJECTED
   isAnonymous Boolean  @default(true)
   uploaderId  String?
-  uploader    User?    @relation("FileUploader", fields: [uploaderId], references: [id])
+  uploader    User?    @relation("FileUploader", fields: [uploaderId], references: [id], onDelete: SetNull)
   approverId  String?
-  approver    User?    @relation("FileApprover", fields: [approverId], references: [id])
+  approver    User?    @relation("FileApprover", fields: [approverId], references: [id], onDelete: SetNull)
   size        Int?
   createdAt   DateTime @default(now())
   order       Int      @default(0)
@@ -190,61 +198,61 @@ model AcademicFile {
 }
 
 model Group {
-  id          String   @id @default(uuid())
-  name        String
-  bio         String?
-  tags        String?
-  avatarUrl   String?
+  id              String  @id @default(uuid())
+  name            String
+  bio             String?
+  tags            String?
+  avatarUrl       String?
   isDirectMessage Boolean @default(false)
-  
-  courseId    String?
-  course      Course?   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  
-  admins      User[]   @relation("GroupAdmins")
-  members     User[]   @relation("GroupMembers")
-  
-  messages    Message[]
-  
-  createdAt   DateTime @default(now())
+
+  courseId String?
+  course   Course? @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  admins  User[] @relation("GroupAdmins")
+  members User[] @relation("GroupMembers")
+
+  messages Message[]
+
+  createdAt DateTime @default(now())
 }
 
 model Message {
-  id          String   @id @default(uuid())
-  content     String
-  
-  groupId     String
-  group       Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  
-  authorId    String
-  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  
-  replyToId   String?
-  replyTo     Message? @relation("MessageReplies", fields: [replyToId], references: [id])
-  replies     Message[] @relation("MessageReplies")
+  id      String @id @default(uuid())
+  content String
+
+  groupId String
+  group   Group  @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  authorId String
+  author   User   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  replyToId String?
+  replyTo   Message?  @relation("MessageReplies", fields: [replyToId], references: [id], onDelete: SetNull)
+  replies   Message[] @relation("MessageReplies")
 
   attachmentUrl  String?
   attachmentName String?
   attachmentSize Int?
   attachmentType String?
 
-  pollData      String?  // JSON string containing poll configuration and options
+  pollData String? // JSON string containing poll configuration and options
 
   deletedForAll Boolean @default(false)
-  deletedBy   User[]   @relation("MessageDeletedBy")
+  deletedBy     User[]  @relation("MessageDeletedBy")
 
   pinnedUntil DateTime?
-  isEdited    Boolean  @default(false)
+  isEdited    Boolean   @default(false)
 
-  createdAt   DateTime @default(now())
+  createdAt DateTime @default(now())
 }
 
 model Log {
-  id          String   @id @default(uuid())
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  action      String
-  details     String?
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
 }
 
 // ------------------------------------------------------
@@ -259,8 +267,8 @@ model Post {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  comments  Comment[]
+  author   User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments Comment[]
 }
 
 model Comment {
@@ -270,8 +278,8 @@ model Comment {
   content   String
   createdAt DateTime @default(now())
 
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  post   Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id], onDelete: Cascade)
 }
 
 // ------------------------------------------------------
@@ -281,12 +289,12 @@ model Enrollment {
   id        String   @id @default(uuid())
   userId    String
   courseId  String
-  semester  String   // e.g., "Fall 2026"
+  semester  String // e.g., "Fall 2026"
   isAdmin   Boolean  @default(false)
   createdAt DateTime @default(now())
 
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@unique([userId, courseId, semester])
 }
@@ -304,12 +312,12 @@ model Club {
   pageViews   Int      @default(0)
   createdAt   DateTime @default(now())
 
-  members     ClubMember[]
-  links       ClubLink[]
-  articles    NewsArticle[]
-  roles       ClubRole[] @relation("ClubRoles")
+  members      ClubMember[]
+  links        ClubLink[]
+  articles     NewsArticle[]
+  roles        ClubRole[]         @relation("ClubRoles")
   imageHistory ClubImageHistory[]
-  followers   ClubFollows[] @relation("ClubFollowers")
+  followers    ClubFollows[]      @relation("ClubFollowers")
 
   @@index([name])
 }
@@ -321,8 +329,8 @@ model ClubRole {
   permissions String[]
   createdAt   DateTime @default(now())
 
-  club        Club         @relation("ClubRoles", fields: [clubId], references: [id], onDelete: Cascade)
-  members     ClubMember[]
+  club    Club         @relation("ClubRoles", fields: [clubId], references: [id], onDelete: Cascade)
+  members ClubMember[]
 
   @@unique([clubId, name])
 }
@@ -330,36 +338,36 @@ model ClubRole {
 model ClubImageHistory {
   id        String   @id @default(uuid())
   clubId    String
-  type      String   // 'AVATAR' or 'BANNER'
+  type      String // 'AVATAR' or 'BANNER'
   url       String
   createdAt DateTime @default(now())
-  
-  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model ClubLink {
-  id        String   @id @default(uuid())
-  url       String
-  clubId    String
-  club      Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  id     String @id @default(uuid())
+  url    String
+  clubId String
+  club   Club   @relation(fields: [clubId], references: [id], onDelete: Cascade)
 }
 
 model ClubMember {
-  id       String   @id @default(uuid())
-  userId   String
-  clubId   String
-  joinedAt DateTime @default(now())
-  isAdmin  Boolean  @default(false)
+  id        String    @id @default(uuid())
+  userId    String
+  clubId    String
+  joinedAt  DateTime  @default(now())
+  isAdmin   Boolean   @default(false)
   roleTitle String?
-  roleId   String?
-  role     ClubRole? @relation(fields: [roleId], references: [id])
+  roleId    String?
+  role      ClubRole? @relation(fields: [roleId], references: [id])
 
-  managerId String?
-  manager   ClubMember? @relation("ClubMembershipTree", fields: [managerId], references: [id])
+  managerId    String?
+  manager      ClubMember?  @relation("ClubMembershipTree", fields: [managerId], references: [id], onDelete: SetNull)
   subordinates ClubMember[] @relation("ClubMembershipTree")
 
-  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  club     Club     @relation(fields: [clubId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  club Club @relation(fields: [clubId], references: [id], onDelete: Cascade)
 
   @@unique([userId, clubId])
 }
@@ -368,13 +376,13 @@ model ClubMember {
 // 6. AI Features (Gemini API Tracking)
 // ------------------------------------------------------
 model AiInteraction {
-  id           String   @id @default(uuid())
-  userId       String
-  prompt       String
-  aiResponse   String
-  createdAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  userId     String
+  prompt     String
+  aiResponse String
+  createdAt  DateTime @default(now())
 
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 // ------------------------------------------------------
@@ -383,33 +391,34 @@ model AiInteraction {
 model UserFollows {
   followerId  String
   followingId String
+  status      String   @default("APPROVED") // PENDING, APPROVED
   createdAt   DateTime @default(now())
-  
-  follower    User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
-  following   User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  follower  User @relation("UserFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("UserFollowers", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@id([followerId, followingId])
 }
 
 model ClubFollows {
-  followerId  String
-  clubId      String
-  createdAt   DateTime @default(now())
-  
-  follower    User @relation("ClubFollowing", fields: [followerId], references: [id], onDelete: Cascade)
-  club        Club @relation("ClubFollowers", fields: [clubId], references: [id], onDelete: Cascade)
+  followerId String
+  clubId     String
+  createdAt  DateTime @default(now())
+
+  follower User @relation("ClubFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  club     Club @relation("ClubFollowers", fields: [clubId], references: [id], onDelete: Cascade)
 
   @@id([followerId, clubId])
 }
 
 model SavedArticle {
-  userId      String
-  articleId   String
-  createdAt   DateTime @default(now())
-  
-  user        User @relation("UserSavedArticles", fields: [userId], references: [id], onDelete: Cascade)
-  article     NewsArticle @relation("ArticleSavedBy", fields: [articleId], references: [id], onDelete: Cascade)
-  
+  userId    String
+  articleId String
+  createdAt DateTime @default(now())
+
+  user    User        @relation("UserSavedArticles", fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation("ArticleSavedBy", fields: [articleId], references: [id], onDelete: Cascade)
+
   @@id([userId, articleId])
 }
 
@@ -417,84 +426,104 @@ model SavedArticle {
 // 8. Forms & Applications
 // ------------------------------------------------------
 model Form {
-  id          String   @id @default(uuid())
+  id          String  @id @default(uuid())
   title       String
   description String?
-  entityType  String   // 'club', 'course', 'general'
+  entityType  String // 'club', 'course', 'general'
   entityId    String?
   creatorId   String
-  creator     User     @relation("FormCreator", fields: [creatorId], references: [id])
-  status      String   @default("DRAFT") // DRAFT, OPEN, CLOSED
-  
+  creator     User    @relation("FormCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  status      String  @default("DRAFT") // DRAFT, OPEN, CLOSED
+
   allowMultipleSubmissions Boolean @default(true)
   allowResponseEdits       Boolean @default(true)
 
   pages       FormPage[]
   submissions FormSubmission[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 }
 
 model FormPage {
-  id          String   @id @default(uuid())
+  id          String      @id @default(uuid())
   formId      String
-  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
+  form        Form        @relation(fields: [formId], references: [id], onDelete: Cascade)
   title       String?
   description String?
-  order       Int      @default(0)
+  order       Int         @default(0)
   fields      FormField[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 }
 
 model FormField {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   pageId      String
-  page        FormPage @relation(fields: [pageId], references: [id], onDelete: Cascade)
-  type        String   // SHORT_TEXT, LONG_TEXT, SINGLE_CHOICE, MULTIPLE_CHOICE, FILE_UPLOAD
+  page        FormPage     @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  type        String // SHORT_TEXT, LONG_TEXT, SINGLE_CHOICE, MULTIPLE_CHOICE, FILE_UPLOAD
   question    String
   description String?
-  required    Boolean  @default(false)
-  options     String?  // JSON string array for choice types
-  order       Int      @default(0)
+  required    Boolean      @default(false)
+  options     String? // JSON string array for choice types
+  order       Int          @default(0)
   answers     FormAnswer[]
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 }
 
 model FormSubmission {
-  id          String   @id @default(uuid())
-  formId      String
-  form        Form     @relation(fields: [formId], references: [id], onDelete: Cascade)
-  userId      String?
-  user        User?    @relation("FormSubmitter", fields: [userId], references: [id])
-  answers     FormAnswer[]
-  status      String   @default("PENDING") // PENDING, APPROVED, REJECTED, WAITLISTED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String       @id @default(uuid())
+  formId    String
+  form      Form         @relation(fields: [formId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?        @relation("FormSubmitter", fields: [userId], references: [id], onDelete: Cascade)
+  answers   FormAnswer[]
+  status    String       @default("PENDING") // PENDING, APPROVED, REJECTED, WAITLISTED
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
 }
 
 model FormAnswer {
-  id           String   @id @default(uuid())
+  id           String         @id @default(uuid())
   submissionId String
   submission   FormSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   fieldId      String
   field        FormField      @relation(fields: [fieldId], references: [id], onDelete: Cascade)
-  value        String   @db.Text // Can be JSON string for multiple choices or file URLs
+  value        String         @db.Text // Can be JSON string for multiple choices or file URLs
+}
+
+model SystemSetting {
+  id    String @id @default(uuid())
+  key   String @unique
+  value String
 }
 
 model Passkey {
-  id           String @id
-  userId       String
-  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
-  publicKey    Bytes
-  counter      BigInt
-  deviceType   String
-  backedUp     Boolean
-  transports   String?
-  name         String?
-  createdAt    DateTime @default(now())
-  lastUsedAt   DateTime @default(now())
+  id         String   @id
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  publicKey  Bytes
+  counter    BigInt
+  deviceType String
+  backedUp   Boolean
+  transports String?
+  name       String?
+  createdAt  DateTime @default(now())
+  lastUsedAt DateTime @default(now())
 
   @@index([userId])
+}
+
+model Warning {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reason    String
+  reportId  String?
+  report    Report?  @relation(fields: [reportId], references: [id])
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  @@index([userId])
+  @@index([reportId])
 }

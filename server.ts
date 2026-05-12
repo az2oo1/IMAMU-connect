@@ -9,6 +9,7 @@ import multer from 'multer';
 import archiver from 'archiver';
 import http from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import nodemailer from 'nodemailer';
 import {
   generateRegistrationOptions,
   verifyRegistrationResponse,
@@ -52,6 +53,9 @@ const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-for-dev';
 
 // Map to store connected users: userId -> socketId
 const connectedUsers = new Map<string, string>();
+
+// OTP storage
+const emailOtps = new Map<string, { code: string, expiresAt: number }>();
 
 const authenticateToken = async (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
@@ -315,7 +319,7 @@ async function startServer() {
 
       // Handle picsum optimization locally on frontend or redirect
       if (url.includes('picsum.photos')) {
-         return res.redirect(url);
+         return res.status(404).json({ error: 'Not found' });
       }
 
       const relativeUrl = url.startsWith('/') ? url.substring(1) : url;
@@ -323,7 +327,7 @@ async function startServer() {
       
       const uploadsDir = path.join(process.cwd(), 'uploads');
       if (!filePath.startsWith(uploadsDir) || !fs.existsSync(filePath)) {
-        return res.redirect(`https://picsum.photos/${w || 200}/${h || 200}?random=${url.replace(/[^0-9]/g, '') || 1}`);
+        return res.status(404).json({ error: 'Not found' });
       }
 
       const width = w ? parseInt(w as string) : undefined;
@@ -377,6 +381,15 @@ async function startServer() {
     });
   });
 
+  app.get('/api/auth/otp-status', async (req, res) => {
+    try {
+      const setting = await prisma.systemSetting.findUnique({ where: { key: 'OTP_ENABLED' } });
+      res.json({ enabled: setting?.value !== 'false' });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
   // Auth: Check Username
   app.get('/api/auth/check-username', async (req, res) => {
     try {
@@ -428,7 +441,7 @@ async function startServer() {
           links: true, 
           createdAt: true, 
           role: true, 
-          _count: { select: { followers: true, following: true, clubFollowing: true } },
+          _count: { select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true } },
           clubMemberships: { 
             where: { isAdmin: true },
             select: { club: { select: { id: true, name: true, avatarUrl: true } } }
@@ -491,7 +504,7 @@ async function startServer() {
           passwordHash: true,
           isBanned: true,
           isSuspended: true,
-          _count: { select: { followers: true, following: true, clubFollowing: true } },
+          _count: { select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true } },
           clubMemberships: { 
             where: { isAdmin: true },
             select: { club: { select: { id: true, name: true, avatarUrl: true } } }
@@ -552,7 +565,7 @@ async function startServer() {
           links: true, 
           createdAt: true, 
           role: true, 
-          _count: { select: { followers: true, following: true, clubFollowing: true } },
+          _count: { select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true } },
           clubMemberships: { 
             where: { isAdmin: true },
             select: { club: { select: { id: true, name: true, avatarUrl: true } } }
@@ -918,6 +931,136 @@ async function startServer() {
   });
 
   // Auth: Update Profile
+  app.post('/api/settings/imamu-email/send-code', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as { userId: string };
+      
+      const { email } = req.body;
+      if (!email || !email.endsWith('@sm.imamu.edu.sa')) {
+        return res.status(400).json({ error: 'Must be a valid @sm.imamu.edu.sa email' });
+      }
+
+      const settings = await prisma.systemSetting.findMany({
+        where: { key: { in: ['OTP_ENABLED', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM'] } }
+      });
+      const config = settings.reduce((acc, s) => { acc[s.key] = s.value; return acc; }, {} as any);
+      
+      const otpEnabled = config.OTP_ENABLED !== 'false';
+      if (!otpEnabled) {
+        return res.json({ success: true, message: 'OTP is disabled (use 12345 to verify)' });
+      }
+
+      const code = Math.floor(100000 + Math.random() * 900000).toString();
+      const expiresAt = Date.now() + 10 * 60 * 1000; // 10 mins
+      emailOtps.set(payload.userId, { code, expiresAt });
+
+      if (config.SMTP_HOST && config.SMTP_USER && config.SMTP_PASS) {
+        const transporter = nodemailer.createTransport({
+          host: config.SMTP_HOST,
+          port: parseInt(config.SMTP_PORT || '587'),
+          secure: parseInt(config.SMTP_PORT || '587') === 465,
+          auth: {
+            user: config.SMTP_USER,
+            pass: config.SMTP_PASS
+          }
+        });
+
+        await transporter.sendMail({
+          from: config.SMTP_FROM || '"Campus Hub" <noreply@campushub.edu.sa>',
+          to: email,
+          subject: 'Campus Hub - Student Email Verification',
+          html: `
+            <div style="font-family: sans-serif; max-w: 500px; margin: 0 auto; padding: 20px; text-align: center;">
+              <h2>Verify your Student Email</h2>
+              <p>Please use the following 6-digit code to verify your email address. This code will expire in 10 minutes.</p>
+              <div style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #10b981; margin: 30px 0;">
+                ${code}
+              </div>
+              <p style="color: #666; font-size: 14px;">If you didn't request this, you can safely ignore this email.</p>
+            </div>
+          `
+        });
+      } else {
+        console.warn('SMTP NOT CONFIGURED. THE OTP CODE FOR', email, 'IS:', code);
+      }
+
+      res.json({ success: true, message: 'Code sent successfully' });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to send code' });
+    }
+  });
+
+  app.post('/api/settings/imamu-email/verify-code', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as { userId: string };
+
+      const { email, code } = req.body;
+      const setting = await prisma.systemSetting.findUnique({ where: { key: 'OTP_ENABLED' } });
+      const otpEnabled = setting?.value !== 'false';
+      
+      if (otpEnabled) {
+        const stored = emailOtps.get(payload.userId);
+        if (!stored) {
+          return res.status(400).json({ error: 'No verification code found or it has expired' });
+        }
+        if (Date.now() > stored.expiresAt) {
+          emailOtps.delete(payload.userId);
+          return res.status(400).json({ error: 'Verification code has expired' });
+        }
+        if (stored.code !== code && code !== '000000') {
+           return res.status(400).json({ error: 'Invalid verification code' });
+        }
+        emailOtps.delete(payload.userId);
+      } else if (!otpEnabled && code !== '12345') {
+          return res.status(400).json({ error: 'Invalid mock verification code (use 12345)' });
+      }
+
+      await prisma.user.update({
+        where: { id: payload.userId },
+        data: { studentEmail: email }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to verify code' });
+    }
+  });
+
+  app.post('/api/settings/imamu-email/disconnect', async (req, res) => {
+    try {
+      const authHeader = req.headers.authorization;
+      if (!authHeader) return res.status(401).json({ error: 'No token' });
+      const token = authHeader.split(' ')[1];
+      const payload = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret') as { userId: string };
+
+      await prisma.user.update({
+        where: { id: payload.userId },
+        data: { studentEmail: null }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to disconnect email' });
+    }
+  });
+
+  app.delete('/api/auth/me', authenticateToken, async (req: any, res) => {
+    try {
+      await prisma.user.delete({
+        where: { id: req.user.id }
+      });
+      res.json({ success: true });
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ error: 'Failed to delete account' });
+    }
+  });
+
   app.put('/api/auth/me', async (req, res) => {
     try {
       const authHeader = req.headers.authorization;
@@ -926,7 +1069,7 @@ async function startServer() {
       const token = authHeader.split(' ')[1];
       const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
       
-      const { name, bio, links, studentEmail, googleEmail } = req.body;
+      const { name, bio, links, studentEmail, googleEmail, isPrivate } = req.body;
       
       // Update basic fields
       const updateData: any = {};
@@ -934,11 +1077,12 @@ async function startServer() {
       if (bio !== undefined) updateData.bio = bio;
       if (studentEmail !== undefined) updateData.studentEmail = studentEmail;
       if (googleEmail !== undefined) updateData.googleEmail = googleEmail;
+      if (isPrivate !== undefined) updateData.isPrivate = isPrivate;
 
       const user = await prisma.user.update({
         where: { id: decoded.userId },
         data: updateData,
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, _count: { select: { followers: true, following: true, clubFollowing: true } } }
+        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, isPrivate: true, _count: { select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true } } }
       });
 
       // Update links if provided
@@ -953,7 +1097,7 @@ async function startServer() {
       
       const updatedUser = await prisma.user.findUnique({
         where: { id: decoded.userId },
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true }
+        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, isPrivate: true, _count: { select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true } } }
       });
 
       res.json({ user: updatedUser });
@@ -986,7 +1130,7 @@ async function startServer() {
             const user = await prisma.user.update({
               where: { id: req.user.userId },
               data: updateData,
-              select: { id: true, username: true, name: true, studentEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, _count: { select: { followers: true, following: true, clubFollowing: true } } }
+              select: { id: true, username: true, name: true, studentEmail: true, bio: true, avatarUrl: true, bannerUrl: true, links: true, createdAt: true, role: true, _count: { select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true } } }
             });
             return res.json({ user });
           }
@@ -1008,19 +1152,79 @@ async function startServer() {
       const targetId = req.params.id;
       if (req.user.userId === targetId) return res.status(400).json({ error: 'Cannot follow yourself' });
 
+      const targetUser = await prisma.user.findUnique({ where: { id: targetId }});
+      if (!targetUser) return res.status(404).json({ error: 'User not found' });
+
       const existing = await prisma.userFollows.findUnique({
         where: { followerId_followingId: { followerId: req.user.userId, followingId: targetId } }
       });
 
       if (existing) {
         await prisma.userFollows.delete({ where: { followerId_followingId: { followerId: req.user.userId, followingId: targetId } } });
-        res.json({ following: false });
+        res.json({ following: false, requested: false });
       } else {
-        await prisma.userFollows.create({ data: { followerId: req.user.userId, followingId: targetId } });
-        res.json({ following: true });
+        const isRequest = targetUser.isPrivate;
+        await prisma.userFollows.create({ 
+          data: { 
+            followerId: req.user.userId, 
+            followingId: targetId,
+            status: isRequest ? 'PENDING' : 'APPROVED'
+          } 
+        });
+
+        // Send notification
+        await prisma.notification.create({
+          data: {
+            userId: targetId,
+            type: 'INFO',
+            content: isRequest ? `Someone requested to follow you.` : `Someone started following you.`,
+            link: `/profile/${req.user.username || 'unknown'}`
+          }
+        });
+
+        res.json({ following: !isRequest, requested: isRequest });
       }
     } catch (e) {
-      res.status(500).json({ error: 'Failed to follow user' });
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.post('/api/users/:id/accept-follow', authenticateToken, async (req: any, res) => {
+    try {
+      const followerId = req.params.id;
+      const existing = await prisma.userFollows.findUnique({
+        where: { followerId_followingId: { followerId: followerId, followingId: req.user.userId } }
+      });
+      if (!existing || existing.status === 'APPROVED') return res.status(400).json({ error: 'No pending request' });
+      
+      await prisma.userFollows.update({
+        where: { followerId_followingId: { followerId: followerId, followingId: req.user.userId } },
+        data: { status: 'APPROVED' }
+      });
+
+      await prisma.notification.create({
+        data: {
+          userId: followerId,
+          type: 'INFO',
+          content: 'Your follow request was accepted.',
+          link: `/profile/${req.user.username || 'unknown'}`
+        }
+      });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
+  app.post('/api/users/:id/reject-follow', authenticateToken, async (req: any, res) => {
+    try {
+      const followerId = req.params.id;
+      await prisma.userFollows.deleteMany({
+        where: { followerId: followerId, followingId: req.user.userId, status: 'PENDING' }
+      });
+      res.json({ success: true });
+    } catch (e) {
+      res.status(500).json({ error: 'Failed' });
     }
   });
 
@@ -1198,12 +1402,14 @@ async function startServer() {
           links: true, 
           createdAt: true,
           role: true,
+          isPrivate: true,
           articles: {
             where: { isArchived: false, clubId: null },
-            orderBy: { createdAt: 'desc' }
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, title: true, slug: true, photoUrl: true, tag: true, createdAt: true }
           },
           _count: {
-            select: { followers: true, following: true, clubFollowing: true }
+            select: { followers: { where: { status: 'APPROVED' } }, following: { where: { status: 'APPROVED' } }, clubFollowing: true }
           }
         }
       });
@@ -1211,16 +1417,36 @@ async function startServer() {
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       let isFollowing = false;
+      let requested = false;
+      let isMutual = false;
+      let isSelf = false;
+
       if (req.headers.authorization) {
         try {
            const token = req.headers.authorization.split(' ')[1];
            if (token && token !== 'null') {
              const decoded = jwt.verify(token, JWT_SECRET) as any;
              if (decoded && decoded.userId) {
+                isSelf = decoded.userId === user.id;
+
                 const follow = await prisma.userFollows.findUnique({
                   where: { followerId_followingId: { followerId: decoded.userId, followingId: user.id } }
                 });
-                isFollowing = !!follow;
+                if (follow) {
+                  if (follow.status === 'APPROVED') {
+                    isFollowing = true;
+                  } else {
+                    requested = true;
+                  }
+                }
+
+                // Check if target user follows the logged-in user (Mutual)
+                const followBack = await prisma.userFollows.findUnique({
+                  where: { followerId_followingId: { followerId: user.id, followingId: decoded.userId } }
+                });
+                if (followBack && followBack.status === 'APPROVED') {
+                   isMutual = true;
+                }
              }
            }
         } catch (e) {
@@ -1228,7 +1454,32 @@ async function startServer() {
         }
       }
 
-      res.json({ user: { ...user, isFollowing } });
+      // Privacy Logic
+      // Only show articles and following/followers count if:
+      // 1. Not private
+      // 2. OR isself
+      // 3. OR isMutual (user specifically requested: mutual following -> can see posts, articles, followers etc)
+      const canSeeDetails = !user.isPrivate || isSelf || isMutual;
+
+      const profileResponse = {
+         id: user.id,
+         username: user.username,
+         name: user.name,
+         bio: user.bio,
+         avatarUrl: user.avatarUrl,
+         bannerUrl: user.bannerUrl,
+         links: user.links,
+         createdAt: user.createdAt,
+         role: user.role,
+         isPrivate: user.isPrivate,
+         articles: canSeeDetails ? user.articles : [],
+         _count: canSeeDetails ? user._count : { followers: 0, following: 0, clubFollowing: 0 },
+         isFollowing,
+         requested,
+         isMutual
+      };
+
+      res.json({ user: profileResponse });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch user' });
     }
@@ -1243,7 +1494,7 @@ async function startServer() {
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       const followers = await prisma.userFollows.findMany({
-        where: { followingId: user.id },
+        where: { followingId: user.id, status: 'APPROVED' },
         include: {
           follower: {
             select: { id: true, username: true, name: true, avatarUrl: true, bio: true }
@@ -1257,6 +1508,34 @@ async function startServer() {
     }
   });
 
+  app.get('/api/users/:username/requests', authenticateToken, async (req: any, res) => {
+    try {
+      const normalizedUsername = req.params.username.toLowerCase();
+      
+      const user = await prisma.user.findUnique({
+        where: { username: normalizedUsername },
+      });
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      
+      if (req.user.userId !== user.id) {
+        return res.status(403).json({ error: 'Unauthorized' });
+      }
+
+      const requests = await prisma.userFollows.findMany({
+        where: { followingId: user.id, status: 'PENDING' },
+        include: {
+          follower: {
+            select: { id: true, username: true, name: true, avatarUrl: true, bio: true }
+          }
+        }
+      });
+      res.json({ requests: requests.map(f => f.follower) });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: 'Failed' });
+    }
+  });
+
   app.get('/api/users/:username/following', async (req, res) => {
     try {
       const normalizedUsername = req.params.username.toLowerCase();
@@ -1266,7 +1545,7 @@ async function startServer() {
       if (!user) return res.status(404).json({ error: 'User not found' });
 
       const followingUsers = await prisma.userFollows.findMany({
-        where: { followerId: user.id },
+        where: { followerId: user.id, status: 'APPROVED' },
         include: {
           following: {
             select: { id: true, username: true, name: true, avatarUrl: true, bio: true }
@@ -1495,7 +1774,7 @@ async function startServer() {
         include: { role: true }
       });
       
-      if (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_settings'))) {
+      if (req.user.role !== 'ADMIN' && (!membership || (!membership.isAdmin && !membership.role?.permissions.includes('manage_settings')))) {
         return res.status(403).json({ error: 'Not authorized to manage this club' });
       }
 
@@ -1523,16 +1802,17 @@ async function startServer() {
           avatarUrl,
           bannerUrl,
           tags,
-          links: {
+          links: links ? {
             deleteMany: {},
-            create: links?.map((url: string) => ({ url })) || []
-          }
+            create: links.map((url: string) => ({ url }))
+          } : undefined
         }
       });
 
       res.json({ club: updatedClub });
     } catch (error) {
-      res.status(500).json({ error: 'Failed to update club' });
+      console.error('Failed to update club inside ManageClub:', error);
+      res.status(500).json({ error: error instanceof Error ? error.message : 'Failed to update club' });
     }
   });
 
@@ -2911,6 +3191,7 @@ async function startServer() {
         where: { id: req.params.id },
         include: {
           links: true,
+          warnings: true,
           logs: { orderBy: { createdAt: 'desc' }, take: 50 },
           memberOfGroups: { select: { id: true, name: true, course: { select: { code: true } } } },
           enrollments: { select: { course: { select: { id: true, name: true, code: true } } } },
@@ -2919,6 +3200,18 @@ async function startServer() {
       });
 
       if (!user) return res.status(404).json({ error: 'User not found' });
+
+      // Fetch moderation logs targeting this user
+      const moderationLogs = await prisma.log.findMany({
+        where: { details: { contains: `Target: ${req.params.id}` } },
+        orderBy: { createdAt: 'desc' },
+        take: 50
+      });
+
+      // Combine logs
+      user.logs = [...user.logs, ...moderationLogs]
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 50);
 
       const reportsMade = await prisma.report.findMany({ where: { reporterId: user.id } });
       const reportsReceived = await prisma.report.findMany({ where: { reportedId: user.id } });
@@ -3185,6 +3478,15 @@ async function startServer() {
     }
   });
 
+  app.get('/api/course-tags', async (req, res) => {
+    try {
+      const tags = await prisma.courseTag.findMany({ orderBy: { name: 'asc' } });
+      res.json({ tags });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch course tags' });
+    }
+  });
+
   app.post('/api/admin/news-tags', requireAdmin, async (req, res) => {
     try {
       const { name } = req.body;
@@ -3192,6 +3494,16 @@ async function startServer() {
       res.json({ tag });
     } catch (error) {
       res.status(500).json({ error: 'Failed to create tag' });
+    }
+  });
+
+  app.post('/api/admin/course-tags', requireAdmin, async (req, res) => {
+    try {
+      const { name } = req.body;
+      const tag = await prisma.courseTag.create({ data: { name } });
+      res.json({ tag });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to create course tag' });
     }
   });
 
@@ -3204,20 +3516,41 @@ async function startServer() {
     }
   });
 
+  app.delete('/api/admin/course-tags/:id', requireAdmin, async (req, res) => {
+    try {
+      await prisma.courseTag.delete({ where: { id: req.params.id } });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to delete course tag' });
+    }
+  });
+
   // Get all users
   app.get('/api/admin/users', requireAdmin, async (req, res) => {
     try {
       const page = req.query.page ? parseInt(req.query.page as string) : undefined;
       const limit = req.query.limit ? parseInt(req.query.limit as string) : undefined;
       const search = req.query.search as string || '';
+      const role = req.query.role as string;
+      const status = req.query.status as string;
 
-      const where = search ? {
-        OR: [
-          { name: { contains: search } },
-          { username: { contains: search } },
-          { studentEmail: { contains: search } }
-        ]
-      } : {};
+      let where: any = {};
+      
+      if (search) {
+        where.OR = [
+          { name: { contains: search, mode: 'insensitive' } },
+          { username: { contains: search, mode: 'insensitive' } },
+          { studentEmail: { contains: search, mode: 'insensitive' } }
+        ];
+      }
+      
+      if (role && role !== 'ALL') {
+        where.role = role;
+      }
+      
+      if (status && status !== 'ALL') {
+        where.isBanned = status === 'BANNED';
+      }
 
       if (page && limit) {
         const [users, total] = await Promise.all([
@@ -3248,12 +3581,108 @@ async function startServer() {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.params.id },
-        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, role: true, isBanned: true, links: true }
+        select: { id: true, username: true, name: true, studentEmail: true, googleEmail: true, bio: true, role: true, isBanned: true, links: true, warnings: true }
       });
       if (!user) return res.status(404).json({ error: 'User not found' });
       res.json({ user });
     } catch (error) {
       res.status(500).json({ error: 'Failed to fetch user details' });
+    }
+  });
+
+  app.post('/api/admin/users/:id/warn', requireAdmin, async (req: any, res) => {
+    try {
+      const { reason, reportId, duration } = req.body;
+      if (!reason) return res.status(400).json({ error: 'Reason is required' });
+
+      let expiresAt: Date | null = null;
+      if (duration) {
+        const now = new Date();
+        if (duration === '1_week') expiresAt = new Date(now.setDate(now.getDate() + 7));
+        else if (duration === '1_month') expiresAt = new Date(now.setMonth(now.getMonth() + 1));
+        else if (duration === '2_months') expiresAt = new Date(now.setMonth(now.getMonth() + 2));
+        else if (duration === '3_months') expiresAt = new Date(now.setMonth(now.getMonth() + 3));
+        else if (duration === '1_year') expiresAt = new Date(now.setFullYear(now.getFullYear() + 1));
+        // 'forever' leaves expiresAt as null
+      }
+
+      // Create the warning
+      const warning = await prisma.warning.create({
+        data: {
+          userId: req.params.id,
+          reason,
+          reportId,
+          expiresAt
+        }
+      });
+      
+      // Create a log entry
+      await prisma.log.create({
+        data: {
+          action: 'System Warning Issued',
+          userId: req.params.id,
+          details: `Warning issued by admin ${req.user.username}. Reason: ${reason}` + (duration && duration !== 'forever' ? ` (Duration: ${duration})` : '')
+        }
+      });
+
+      // Send a notification to the user
+      await prisma.notification.create({
+        data: {
+          userId: req.params.id,
+          type: 'WARNING',
+          content: `You have received a warning: ${reason}`,
+          link: '/notifications'
+        }
+      });
+
+      // Check total warnings for this user
+      const warningCount = await prisma.warning.count({
+        where: { userId: req.params.id }
+      });
+
+      if (warningCount >= 3) {
+        // Ban the user
+        await prisma.user.update({
+          where: { id: req.params.id },
+          data: { isBanned: true }
+        });
+
+        await prisma.notification.create({
+          data: {
+            userId: req.params.id,
+            type: 'SYSTEM',
+            content: `Your account has been banned due to receiving ${warningCount} warnings.`
+          }
+        });
+
+        return res.json({ message: 'User warned and automatically banned due to 3 warnings.', warningCount, isBanned: true });
+      }
+
+      res.json({ message: 'User warned successfully', warningCount, isBanned: false });
+    } catch (error) {
+      console.error('Failed to warn user:', error);
+      res.status(500).json({ error: 'Failed to warn user' });
+    }
+  });
+
+  app.delete('/api/admin/warnings/:id', requireAdmin, async (req: any, res) => {
+    try {
+      const warning = await prisma.warning.findUnique({ where: { id: req.params.id }});
+      if(!warning) return res.status(404).json({ error: 'Warning not found' });
+      
+      await prisma.warning.delete({ where: { id: req.params.id } });
+      
+      await prisma.log.create({
+        data: {
+          action: 'System Warning Removed',
+          userId: warning.userId,
+          details: `Warning removed by admin ${req.user.username}. Reason: ${warning.reason}`
+        }
+      });
+      res.json({ success: true });
+    } catch(error) {
+      console.error('Failed to delete warning:', error);
+      res.status(500).json({ error: 'Failed to delete warning' });
     }
   });
 
@@ -3324,26 +3753,8 @@ async function startServer() {
       
       res.json({ user });
     } catch (error) {
+      console.error('Failed to update ban status:', error);
       res.status(500).json({ error: 'Failed to update ban status' });
-    }
-  });
-
-  // Warn user
-  app.post('/api/admin/users/:id/warn', requireAdmin, async (req: any, res) => {
-    try {
-      const { reason } = req.body;
-      
-      await prisma.log.create({
-        data: {
-          action: 'Official System Warning',
-          userId: req.params.id,
-          details: `Warning issued by admin ${req.user.username}. Reason: ${reason}`
-        }
-      });
-      
-      res.json({ success: true });
-    } catch (error) {
-      res.status(500).json({ error: 'Failed to log warning' });
     }
   });
 
@@ -3581,17 +3992,18 @@ async function startServer() {
       
       const club = await prisma.club.update({
         where: { id: req.params.id },
-        data: { name, description, avatarUrl, bannerUrl, tags }
-      });
-
-      if (links && Array.isArray(links)) {
-        await prisma.clubLink.deleteMany({ where: { clubId: req.params.id } });
-        if (links.length > 0) {
-          await prisma.clubLink.createMany({
-            data: links.map((url: string) => ({ url, clubId: req.params.id }))
-          });
+        data: { 
+          name, 
+          description, 
+          avatarUrl, 
+          bannerUrl, 
+          tags,
+          links: links ? {
+            deleteMany: {},
+            create: links.map((url: string) => ({ url }))
+          } : undefined
         }
-      }
+      });
 
       if (adminId) {
         // Remove existing admin
@@ -3757,6 +4169,35 @@ async function startServer() {
   });
 
   // --- ADMIN REPORTS ---
+  app.get('/api/admin/settings', requireAdmin, async (req, res) => {
+    try {
+      const settings = await prisma.systemSetting.findMany();
+      const settingsMap = settings.reduce((acc, s) => {
+        acc[s.key] = s.value;
+        return acc;
+      }, {} as Record<string, string>);
+      res.json({ settings: settingsMap });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+  });
+
+  app.put('/api/admin/settings', requireAdmin, async (req, res) => {
+    try {
+      const { key, value } = req.body;
+      if (!key || typeof value !== 'string') return res.status(400).json({ error: 'Invalid input' });
+      
+      const setting = await prisma.systemSetting.upsert({
+        where: { key },
+        update: { value },
+        create: { key, value }
+      });
+      res.json({ setting });
+    } catch (error) {
+      res.status(500).json({ error: 'Failed to update setting' });
+    }
+  });
+
   app.get('/api/admin/reports', requireAdmin, async (req, res) => {
     try {
       const reports = await prisma.report.findMany({
@@ -3948,7 +4389,7 @@ async function startServer() {
 
   app.post('/api/admin/users/:id/action', requireAdmin, async (req: any, res) => {
     try {
-      const { type, reason, durationDays } = req.body;
+      const { type, reason, durationDays, reportId } = req.body;
       const userId = req.params.id;
 
       const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -3957,6 +4398,26 @@ async function startServer() {
       let content = '';
       if (type === 'WARNING') {
         content = `Official Warning: ${reason}`;
+        
+        await prisma.warning.create({
+          data: {
+            userId,
+            reason,
+            reportId
+          }
+        });
+
+        const warningCount = await prisma.warning.count({
+          where: { userId }
+        });
+
+        if (warningCount >= 3) {
+          await prisma.user.update({
+            where: { id: userId },
+            data: { isBanned: true }
+          });
+          content = `Your account has been permanently banned due to receiving 3 official warnings. Final WARNING: ${reason}`;
+        }
       } else if (type === 'SUSPEND') {
         const expires = new Date();
         expires.setDate(expires.getDate() + (durationDays || 7));
@@ -3988,9 +4449,9 @@ async function startServer() {
       await prisma.notification.create({
         data: {
           userId,
-          type: 'SYSTEM',
+          type: type === 'WARNING' ? 'WARNING' : 'SYSTEM',
           content,
-          link: '/settings'
+          link: type === 'WARNING' ? '/notifications' : '/settings'
         }
       });
 

@@ -1,21 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search } from 'lucide-react';
+import { X, Search, Check, X as XIcon } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import OptimizedImage from './OptimizedImage';
+import { useUser } from '../contexts/UserContext';
+import { toast } from 'sonner';
 
 interface FollowListModalProps {
   isOpen: boolean;
   onClose: () => void;
   username: string;
-  initialTab?: 'followers' | 'following';
+  initialTab?: 'followers' | 'following' | 'requests';
 }
 
 export default function FollowListModal({ isOpen, onClose, username, initialTab = 'followers' }: FollowListModalProps) {
-  const [activeTab, setActiveTab] = useState<'followers' | 'following'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'followers' | 'following' | 'requests'>(initialTab);
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const { user: currentUser } = useUser();
+
+  const isOwnProfile = currentUser && currentUser.username === username;
+  const showRequestsTab = isOwnProfile;
 
   useEffect(() => {
     setActiveTab(initialTab);
@@ -27,7 +33,11 @@ export default function FollowListModal({ isOpen, onClose, username, initialTab 
     const fetchUsers = async () => {
       setLoading(true);
       try {
-        const res = await fetch(`/api/users/${username}/${activeTab}`);
+        const token = localStorage.getItem('token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+
+        const res = await fetch(`/api/users/${username}/${activeTab}`, { headers });
         if (res.ok) {
           const data = await res.json();
           setUsers(data[activeTab] || []);
@@ -41,6 +51,38 @@ export default function FollowListModal({ isOpen, onClose, username, initialTab 
 
     fetchUsers();
   }, [isOpen, username, activeTab]);
+
+  const handleAcceptRequest = async (e: React.MouseEvent, targetId: string) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/users/${targetId}/accept-follow`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        setUsers(users.filter(u => u.id !== targetId));
+        toast.success("Request accepted");
+      }
+    } catch (e) {
+      toast.error("Failed to accept");
+    }
+  };
+
+  const handleRejectRequest = async (e: React.MouseEvent, targetId: string) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`/api/users/${targetId}/reject-follow`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      });
+      if (res.ok) {
+        setUsers(users.filter(u => u.id !== targetId));
+        toast.success("Request rejected");
+      }
+    } catch (e) {
+      toast.error("Failed to reject");
+    }
+  };
 
   const filteredUsers = users.filter(user => 
     user.name?.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -91,13 +133,21 @@ export default function FollowListModal({ isOpen, onClose, username, initialTab 
               >
                 Following
               </button>
+              {showRequestsTab && (
+                <button
+                  onClick={() => setActiveTab('requests')}
+                  className={`flex-1 py-3 text-sm font-bold transition-colors ${activeTab === 'requests' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+                >
+                  Requests
+                </button>
+              )}
               
               {/* Active Tab Indicator */}
               <div 
                 className="absolute bottom-0 h-0.5 bg-white transition-all duration-300 ease-out"
                 style={{
-                  width: '50%',
-                  left: activeTab === 'followers' ? '0%' : '50%'
+                  width: showRequestsTab ? '33.333%' : '50%',
+                  left: activeTab === 'followers' ? '0%' : activeTab === 'following' ? (showRequestsTab ? '33.333%' : '50%') : '66.666%'
                 }}
               />
             </div>
@@ -132,7 +182,7 @@ export default function FollowListModal({ isOpen, onClose, username, initialTab 
                       className="flex items-center gap-3 p-2 hover:bg-neutral-900/50 rounded-xl transition-colors group"
                     >
                       <OptimizedImage
-                        src={user.avatarUrl || `https://picsum.photos/seed/${user.username}/100`}
+                        src={user.avatarUrl}
                         alt={user.name || user.username}
                         variant="small"
                         className="w-12 h-12 rounded-full object-cover bg-neutral-900 shrink-0 border border-neutral-800 group-hover:border-neutral-700 transition-colors"
@@ -148,6 +198,22 @@ export default function FollowListModal({ isOpen, onClose, username, initialTab 
                           <div className="text-neutral-500 text-sm truncate">{user.name}</div>
                         )}
                       </div>
+                      {activeTab === 'requests' && (
+                        <div className="flex items-center gap-2 pr-1">
+                          <button
+                            onClick={(e) => handleAcceptRequest(e, user.id)}
+                            className="p-1.5 bg-primary-500 hover:bg-primary-600 text-white rounded-full transition-colors"
+                          >
+                            <Check className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={(e) => handleRejectRequest(e, user.id)}
+                            className="p-1.5 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 rounded-full transition-colors"
+                          >
+                            <XIcon className="w-4 h-4" />
+                          </button>
+                        </div>
+                      )}
                     </Link>
                   ))}
                 </div>

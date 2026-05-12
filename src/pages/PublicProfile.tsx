@@ -21,6 +21,9 @@ interface PublicUser {
   articles?: any[];
   _count?: { followers: number; following: number; clubFollowing: number };
   isFollowing?: boolean;
+  requested?: boolean;
+  isMutual?: boolean;
+  isPrivate?: boolean;
 }
 
 export default function PublicProfile() {
@@ -31,6 +34,8 @@ export default function PublicProfile() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isFollowing, setIsFollowing] = useState(false);
+  const [isRequested, setIsRequested] = useState(false);
+  const [isMutual, setIsMutual] = useState(false);
   const [followersCount, setFollowersCount] = useState(0);
   const [isFollowModalOpen, setIsFollowModalOpen] = useState(false);
   const [followModalTab, setFollowModalTab] = useState<'followers' | 'following'>('followers');
@@ -57,6 +62,8 @@ export default function PublicProfile() {
         const data = await res.json();
         setProfile(data.user);
         setIsFollowing(data.user.isFollowing || false);
+        setIsRequested(data.user.requested || false);
+        setIsMutual(data.user.isMutual || false);
         setFollowersCount(data.user._count?.followers || 0);
         if (data.user.role === 'NEWS_WRITER' || data.user.role === 'ADMIN') {
           setActiveTab('news');
@@ -85,7 +92,12 @@ export default function PublicProfile() {
       if (res.ok) {
         const data = await res.json();
         setIsFollowing(data.following);
-        setFollowersCount(prev => data.following ? prev + 1 : prev - 1);
+        setIsRequested(data.requested);
+        if (data.following && !isFollowing) {
+           setFollowersCount(prev => prev + 1);
+        } else if (!data.following && isFollowing && !data.requested) {
+           setFollowersCount(prev => prev - 1);
+        }
       }
     } catch (e) {
       console.error("Failed to follow");
@@ -105,6 +117,8 @@ export default function PublicProfile() {
     );
   }
 
+  const isPrivateLock = profile.isPrivate && !isMutual && currentUser?.id !== profile.id && !isFollowing;
+
   return (
     <div 
       className="flex-1 h-full overflow-y-auto custom-scrollbar bg-neutral-950 relative"
@@ -119,7 +133,7 @@ export default function PublicProfile() {
       {/* Cover Photo */}
       <div className="h-48 md:h-64 bg-neutral-900 relative group overflow-hidden">
         <OptimizedImage 
-          src={profile.bannerUrl || `https://picsum.photos/seed/${profile.id}_banner/1200/400`} 
+          src={profile.bannerUrl} 
           alt="Cover" 
           variant="banner"
           className="w-full h-full object-cover"
@@ -133,7 +147,7 @@ export default function PublicProfile() {
             <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-end">
               <div className="relative">
                 <OptimizedImage 
-                  src={profile.avatarUrl || `https://picsum.photos/seed/${profile.id}/150/150`} 
+                  src={profile.avatarUrl} 
                   alt="Profile" 
                   variant="large"
                   className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border-4 border-neutral-900 object-cover bg-neutral-800 shadow-lg"
@@ -144,18 +158,31 @@ export default function PublicProfile() {
                 <h1 className="text-2xl font-bold text-white">{profile.name || profile.username}</h1>
                 <p className="text-primary-400 font-medium">@{profile.username}</p>
                 <div className="flex items-center gap-4 mt-2 text-sm">
-                  <div 
-                    className="text-white cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => { setFollowModalTab('followers'); setIsFollowModalOpen(true); }}
-                  >
-                    <span className="font-bold">{followersCount}</span> <span className="text-neutral-500">Followers</span>
-                  </div>
-                  <div 
-                    className="text-white cursor-pointer hover:opacity-80 transition-opacity"
-                    onClick={() => { setFollowModalTab('following'); setIsFollowModalOpen(true); }}
-                  >
-                    <span className="font-bold">{(profile._count?.following || 0) + (profile._count?.clubFollowing || 0)}</span> <span className="text-neutral-500">Following</span>
-                  </div>
+                  {!isPrivateLock ? (
+                    <>
+                      <div 
+                        className="text-white cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => { setFollowModalTab('followers'); setIsFollowModalOpen(true); }}
+                      >
+                        <span className="font-bold">{followersCount}</span> <span className="text-neutral-500">Followers</span>
+                      </div>
+                      <div 
+                        className="text-white cursor-pointer hover:opacity-80 transition-opacity"
+                        onClick={() => { setFollowModalTab('following'); setIsFollowModalOpen(true); }}
+                      >
+                        <span className="font-bold">{(profile._count?.following || 0) + (profile._count?.clubFollowing || 0)}</span> <span className="text-neutral-500">Following</span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-neutral-500">
+                        <span className="font-bold">{followersCount}</span> Followers
+                      </div>
+                      <div className="text-neutral-500">
+                        <span className="font-bold">{(profile._count?.following || 0) + (profile._count?.clubFollowing || 0)}</span> Following
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
             </div>
@@ -164,12 +191,12 @@ export default function PublicProfile() {
                <button 
                  onClick={handleFollow}
                  className={`px-6 py-2.5 rounded-xl font-bold transition-all border ${
-                   isFollowing 
+                   isFollowing || isRequested
                      ? 'bg-neutral-900 border-neutral-700 text-white hover:bg-neutral-800' 
                      : 'bg-primary-600 border-primary-500 text-white hover:bg-primary-500'
                  }`}
                >
-                 {isFollowing ? 'Following' : 'Follow'}
+                 {isFollowing ? 'Following' : isRequested ? 'Requested' : 'Follow'}
                </button>
             )}
           </div>
@@ -192,45 +219,59 @@ export default function PublicProfile() {
           </div>
         </div>
 
-        <div className="flex border-b border-neutral-800 mb-8 relative">
-          <button
-            onClick={() => setActiveTab('posts')}
-            className={`flex-1 py-4 text-sm font-medium transition-colors relative ${activeTab === 'posts' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
-          >
-            Posts
-            {activeTab === 'posts' && (
-              <motion.div layoutId="public_profile_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
-            )}
-          </button>
-          {(profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') && (
-            <button
-              onClick={() => setActiveTab('news')}
-              className={`flex-1 py-4 text-sm font-medium transition-colors relative ${activeTab === 'news' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
-            >
-              Articles
-              {activeTab === 'news' && (
-                <motion.div layoutId="public_profile_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
-              )}
-            </button>
-          )}
-        </div>
-
-        {activeTab === 'news' && (profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') && (
-          <div className="mt-8">
-            <ProfileArticlesList profileUserId={profile.id} currentUserId={currentUser?.id} />
-          </div>
-        )}
-
-        {activeTab === 'posts' && (
-          <div className="text-center py-20 bg-neutral-900/30 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
-            <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-500/20">
-              <Compass className="w-8 h-8 text-primary-400" />
+        {isPrivateLock ? (
+          <div className="text-center py-24 bg-neutral-950/50 mt-8 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
+            <div className="w-16 h-16 bg-neutral-900 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-neutral-800">
+              <Compass className="w-8 h-8 text-neutral-600" />
             </div>
-            <h3 className="text-xl font-bold text-white mb-2">Posts</h3>
-            <p className="text-neutral-400 max-w-md mx-auto">
-              This user hasn't posted anything yet.
+            <h3 className="text-xl font-bold text-white mb-2">This account is private</h3>
+            <p className="text-neutral-500 max-w-md mx-auto">
+              Follow this account to see their photos, articles, and posts.
             </p>
           </div>
+        ) : (
+          <>
+            <div className="flex border-b border-neutral-800 mb-8 relative">
+              <button
+                onClick={() => setActiveTab('posts')}
+                className={`flex-1 py-4 text-sm font-medium transition-colors relative ${activeTab === 'posts' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+              >
+                Posts
+                {activeTab === 'posts' && (
+                  <motion.div layoutId="public_profile_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+                )}
+              </button>
+              {(profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') && (
+                <button
+                  onClick={() => setActiveTab('news')}
+                  className={`flex-1 py-4 text-sm font-medium transition-colors relative ${activeTab === 'news' ? 'text-white' : 'text-neutral-500 hover:text-neutral-300'}`}
+                >
+                  Articles
+                  {activeTab === 'news' && (
+                    <motion.div layoutId="public_profile_active_tab" className="absolute bottom-0 left-0 w-full h-0.5 bg-primary-500 rounded-t-full" />
+                  )}
+                </button>
+              )}
+            </div>
+
+            {activeTab === 'news' && (profile.role === 'NEWS_WRITER' || profile.role === 'ADMIN') && (
+              <div className="mt-8">
+                <ProfileArticlesList profileUserId={profile.id} currentUserId={currentUser?.id} />
+              </div>
+            )}
+
+            {activeTab === 'posts' && (
+              <div className="text-center py-20 bg-neutral-900/30 rounded-[3rem] border border-neutral-800 border-dashed mb-16">
+                <div className="w-16 h-16 bg-primary-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-primary-500/20">
+                  <Compass className="w-8 h-8 text-primary-400" />
+                </div>
+                <h3 className="text-xl font-bold text-white mb-2">Posts</h3>
+                <p className="text-neutral-400 max-w-md mx-auto">
+                  This user hasn't posted anything yet.
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

@@ -99,7 +99,7 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
   const authorName = getAuthorName();
   const rawAuthorHandle = typeof article.author === 'object' && !(article.author as any)?.isClub ? (article.author as any)?.username : null;
   const authorHandle = rawAuthorHandle || authorName.toLowerCase().replace(/\s+/g, '');
-  const authorAvatar = article.authorAvatar || (typeof article.author === 'object' ? (article.author as any).avatar || (article.author as any).avatarUrl : null) || `https://picsum.photos/seed/${authorName}/100/100`;
+  const authorAvatar = article.authorAvatar || (typeof article.author === 'object' ? (article.author as any).avatar || (article.author as any).avatarUrl : null);
 
   let displayImages = [];
   try {
@@ -108,9 +108,9 @@ export default function NewsArticleModal({ article, isOpen, onClose }: NewsArtic
       ? rawImages 
       : article.image 
         ? [article.image] 
-        : [`https://picsum.photos/seed/${article.id}/800/600`];
+        : [];
   } catch(e) {
-    displayImages = article.image ? [article.image] : [`https://picsum.photos/seed/${article.id}/800/600`];
+    displayImages = article.image ? [article.image] : [];
   }
 
   const handleNextImage = (e: React.MouseEvent) => {

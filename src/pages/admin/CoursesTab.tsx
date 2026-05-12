@@ -1,10 +1,11 @@
 import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
 import AdminPagination from '../../components/AdminPagination';
-import { Search, Plus, Trash2, Edit2, Users } from 'lucide-react';
+import { Search, Plus, Trash2, Edit2, Users, Loader2 } from 'lucide-react';
 import EditCourseModal from './EditCourseModal';
 import CourseUsersModal from './CourseUsersModal';
 import TagInput from '../../components/TagInput';
+import ConfirmModal from '../../components/ConfirmModal';
 
 export default function CoursesTab() {
   const [courses, setCourses] = useState<any[]>([]);
@@ -20,6 +21,71 @@ export default function CoursesTab() {
   const [newCourseTags, setNewCourseTags] = useState('');
   const [editingCourse, setEditingCourse] = useState<any>(null);
   const [viewingUsersCourse, setViewingUsersCourse] = useState<any>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, config: null | {title: string, message: string, onConfirm: () => void, isDestructive?: boolean}}>({ isOpen: false, config: null });
+
+  const [tags, setTags] = useState<any[]>([]);
+  const [newTag, setNewTag] = useState('');
+
+  const fetchTags = async () => {
+    try {
+      const res = await fetch('/api/course-tags');
+      const data = await res.json();
+      setTags(data.tags || []);
+    } catch (err) {
+      console.error('Failed to fetch tags', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchTags();
+  }, []);
+
+  const handleAddTag = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTag.trim()) return;
+    try {
+      const res = await fetch('/api/admin/course-tags', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({ name: newTag.trim() })
+      });
+      if (res.ok) {
+        setNewTag('');
+        fetchTags();
+      }
+    } catch (error) {
+      console.error('Failed to create tag', error);
+    }
+  };
+
+  const handleDeleteTag = async (id: string) => {
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Tag',
+        message: 'Are you sure you want to delete this tag? This action cannot be undone.',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/admin/course-tags/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+              fetchTags();
+            }
+          } catch (error) {
+            console.error('Failed to delete tag', error);
+          }
+        }
+      }
+    });
+  };
 
   const fetchCourses = async (currentSearch = searchQuery, currentPage = page) => {
     try {
@@ -57,6 +123,7 @@ export default function CoursesTab() {
 
   const handleCreateCourse = async (e: React.FormEvent) => {
     e.preventDefault();
+    setIsSaving(true);
     try {
       const res = await fetch('/api/admin/courses', {
         method: 'POST',
@@ -75,27 +142,47 @@ export default function CoursesTab() {
       }
     } catch (error) {
       console.error('Failed to create course', error);
+    } finally {
+      setIsSaving(false);
     }
   };
 
   const handleDeleteCourse = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this course?')) return;
-    try {
-      const res = await fetch(`/api/admin/courses/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        fetchCourses();
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Course',
+        message: 'Are you sure you want to delete this course?',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/admin/courses/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+              fetchCourses();
+            }
+          } catch (error) {
+            console.error('Failed to delete course', error);
+          }
+        }
       }
-    } catch (error) {
-      console.error('Failed to delete course', error);
-    }
+    });
   };
 
   
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen} 
+        title={confirmModal.config?.title || ''}
+        message={confirmModal.config?.message || ''}
+        isDestructive={confirmModal.config?.isDestructive}
+        onConfirm={() => confirmModal.config?.onConfirm()}
+        onCancel={() => setConfirmModal({ isOpen: false, config: null })}
+      />
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-white mb-2">Course Management</h2>
@@ -140,11 +227,36 @@ export default function CoursesTab() {
             </div>
             <div>
               <label className="block text-sm font-medium text-neutral-300 mb-1">Tags</label>
-              <TagInput
-                tags={newCourseTags}
-                onChange={setNewCourseTags}
-                placeholder="e.g. Programming, Freshman"
-              />
+              <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                {tags.map(tag => {
+                  const isSelected = newCourseTags.split(',').map(t => t.trim()).includes(tag.name);
+                  return (
+                    <button
+                      key={tag.id}
+                      type="button"
+                      onClick={() => {
+                        let currentTags = newCourseTags.split(',').map(t => t.trim()).filter(Boolean);
+                        if (isSelected) {
+                          currentTags = currentTags.filter(t => t !== tag.name);
+                        } else {
+                          currentTags.push(tag.name);
+                        }
+                        setNewCourseTags(currentTags.join(', '));
+                      }}
+                      className={`px-4 py-1.5 rounded-full text-sm font-medium whitespace-nowrap transition-colors border ${
+                        isSelected 
+                          ? 'bg-primary-500/20 text-primary-400 border-primary-500/50' 
+                          : 'bg-neutral-900 border-neutral-700 text-neutral-400 hover:text-white hover:border-neutral-600'
+                      }`}
+                    >
+                      {tag.name}
+                    </button>
+                  );
+                })}
+                {tags.length === 0 && (
+                  <span className="text-sm text-neutral-500 italic py-1.5">No tags available. Set them up below.</span>
+                )}
+              </div>
             </div>
             <div className="flex justify-end gap-3 pt-4">
               <button
@@ -156,9 +268,11 @@ export default function CoursesTab() {
               </button>
               <button
                 type="submit"
-                className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-2 rounded-xl font-medium transition-colors"
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 outline-none text-white px-6 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
               >
-                Create
+                {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
+                {isSaving ? 'Creating...' : 'Create'}
               </button>
             </div>
           </form>
@@ -258,6 +372,38 @@ export default function CoursesTab() {
           onClose={() => setViewingUsersCourse(null)}
         />
       )}
+
+      <div className="mb-8 mt-16">
+        <h2 className="text-2xl font-bold text-white mb-2">Tag Management</h2>
+        <p className="text-neutral-400">Add or remove predefined tags for courses.</p>
+      </div>
+
+      <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-xl p-6">
+        <form onSubmit={handleAddTag} className="flex items-center gap-4 mb-6">
+          <input
+            type="text"
+            value={newTag}
+            onChange={(e) => setNewTag(e.target.value)}
+            placeholder="New tag name (e.g. Science, Humanities)"
+            className="flex-1 bg-neutral-900/50 border border-neutral-800 rounded-lg shadow-sm px-4 py-2.5 text-white focus:outline-none focus:border-primary-500"
+          />
+          <button type="submit" className="px-6 py-2.5 bg-primary-500 text-white font-bold rounded-xl hover:bg-primary-600 transition-colors">
+            Add Tag
+          </button>
+        </form>
+
+        <div className="flex flex-wrap gap-3">
+          {tags.map(tag => (
+            <div key={tag.id} className="flex items-center gap-2 bg-neutral-800 px-4 py-2 rounded-xl text-neutral-300">
+              <span className="font-medium">{tag.name}</span>
+              <button type="button" onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteTag(tag.id); }} className="text-neutral-500 hover:text-red-400 p-0.5 rounded transition-colors">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+          {tags.length === 0 && <span className="text-neutral-500 text-sm">No tags available.</span>}
+        </div>
+      </div>
     </div>
   );
 }

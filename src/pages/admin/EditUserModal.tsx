@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Save } from 'lucide-react';
+import { X, Save, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface EditUserModalProps {
@@ -216,7 +216,7 @@ export default function EditUserModal({ isOpen, onClose, userId, onUserUpdated }
               disabled={isLoading}
               className="flex items-center gap-2 bg-primary-500 hover:bg-primary-600 text-white px-6 py-2 rounded-xl font-medium transition-colors disabled:opacity-50"
             >
-              <Save className="w-4 h-4" />
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
               {isLoading ? 'Saving...' : 'Save Changes'}
             </button>
           </div>

@@ -189,7 +189,7 @@ export default function ComposeArticle() {
                      onClick={() => setAuthorType('user')}
                      className={`flex flex-1 items-center gap-3 p-4 rounded-2xl border-2 transition-all ${authorType === 'user' ? 'border-primary-500 bg-primary-500/10' : 'border-neutral-800 bg-neutral-900/50 hover:bg-neutral-800'}`}
                    >
-                     <img referrerPolicy="no-referrer" src={user?.avatarUrl || `https://picsum.photos/seed/${user?.id}/100`} alt="Me" className="w-10 h-10 rounded-full object-cover" />
+                     <img referrerPolicy="no-referrer" src={user?.avatarUrl} alt="Me" className="w-10 h-10 rounded-full object-cover" />
                      <div className="text-left">
                        <div className="text-white font-bold">{user?.name}</div>
                        <div className="text-neutral-400 text-xs">Personal Profile</div>

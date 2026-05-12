@@ -3,11 +3,11 @@
  */
 
 export const CACHE_KEYS = {
-  MESSAGES: 'campushub_messages_cache',
-  GROUPS: 'campushub_groups_cache',
-  COURSES: 'campushub_courses_cache',
-  FILES: 'campushub_files_cache',
-  CLUBS: 'campushub_clubs_cache',
+  MESSAGES: 'campushub_messages_cache_v2',
+  GROUPS: 'campushub_groups_cache_v2',
+  COURSES: 'campushub_courses_cache_v2',
+  FILES: 'campushub_files_cache_v2',
+  CLUBS: 'campushub_clubs_cache_v2',
 };
 
 export const saveToCache = (key: string, data: any) => {

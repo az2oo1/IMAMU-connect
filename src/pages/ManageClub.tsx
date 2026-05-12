@@ -2,7 +2,7 @@ import { toast } from 'sonner';
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { ArrowLeft, Save, Plus, Trash2, Users, FileText, Settings, Image as ImageIcon, Link as LinkIcon, Shield, Upload, LayoutDashboard, Eye, Edit, ChevronRight, Network, MoreVertical, Search, UserPlus } from 'lucide-react';
+import { ArrowLeft, Save, Plus, Trash2, Users, FileText, Settings, Image as ImageIcon, Link as LinkIcon, Shield, Upload, LayoutDashboard, Eye, Edit, ChevronRight, Network, MoreVertical, Search, UserPlus, Loader2 } from 'lucide-react';
 import { useUser } from '../contexts/UserContext';
 import TagInput from '../components/TagInput';
 import TipTapEditor, { TipTapEditorRef } from '../components/TipTapEditor';
@@ -10,6 +10,8 @@ import ClubHierarchy from '../components/ClubHierarchy';
 import OptimizedImage from '../components/OptimizedImage';
 import FormBuilder from '../components/FormBuilder';
 import FormSubmissions from '../components/FormSubmissions';
+import ImageUploadInput from '../components/ImageUploadInput';
+import ConfirmModal from '../components/ConfirmModal';
 
 export default function ManageClub() {
   const { id } = useParams<{ id: string }>();
@@ -27,6 +29,7 @@ export default function ManageClub() {
   const [avatarUrl, setAvatarUrl] = useState('');
   const [bannerUrl, setBannerUrl] = useState('');
   const [links, setLinks] = useState<string[]>([]);
+  const [isSavingDetails, setIsSavingDetails] = useState(false);
 
   // News State
   const [newsTitle, setNewsTitle] = useState('');
@@ -312,6 +315,7 @@ export default function ManageClub() {
   const handleUpdateDetails = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsSavingDetails(true);
     try {
       const res = await fetch(`/api/clubs/${id}`, {
         method: 'PUT',
@@ -335,6 +339,8 @@ export default function ManageClub() {
     } catch (err: any) {
       toast.error(err.message);
       setError(err.message);
+    } finally {
+      setIsSavingDetails(false);
     }
   };
 
@@ -429,35 +435,55 @@ export default function ManageClub() {
   };
 
   const handleDeleteArticle = async (articleId: string) => {
-    if (!confirm('Are you sure you want to delete this article?')) return;
-    try {
-      const res = await fetch(`/api/clubs/${id}/articles/${articleId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (!res.ok) throw new Error('Failed to delete article');
-      toast.success('Article deleted successfully');
-      fetchClubData();
-    } catch (err: any) {
-      toast.error(err.message);
-      setError(err.message);
-    }
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Article',
+        message: 'Are you sure you want to delete this article?',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/clubs/${id}/articles/${articleId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!res.ok) throw new Error('Failed to delete article');
+            toast.success('Article deleted successfully');
+            fetchClubData();
+          } catch (err: any) {
+            toast.error(err.message);
+            setError(err.message);
+          }
+        }
+      }
+    });
   };
 
   const handleRemoveMember = async (userId: string) => {
-    if (!confirm('Are you sure you want to remove this member?')) return;
-    try {
-      const res = await fetch(`/api/clubs/${id}/members/${userId}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (!res.ok) throw new Error('Failed to remove member');
-      toast.success('Member removed successfully');
-      fetchClubData();
-    } catch (err: any) {
-      toast.error(err.message);
-      setError(err.message);
-    }
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Remove Member',
+        message: 'Are you sure you want to remove this member?',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/clubs/${id}/members/${userId}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (!res.ok) throw new Error('Failed to remove member');
+            toast.success('Member removed successfully');
+            fetchClubData();
+          } catch (err: any) {
+            toast.error(err.message);
+            setError(err.message);
+          }
+        }
+      }
+    });
   };
 
   const handleSaveRole = async () => {
@@ -485,19 +511,29 @@ export default function ManageClub() {
   };
 
   const handleDeleteRole = async (roleId: string) => {
-    if (!window.confirm("Are you sure you want to delete this role?")) return;
-    try {
-      const res = await fetch(`/api/clubs/${id}/roles/${roleId}`, {
-        method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem('token')}`
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Role',
+        message: 'Are you sure you want to delete this role?',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/clubs/${id}/roles/${roleId}`, {
+              method: 'DELETE',
+              headers: {
+                Authorization: `Bearer ${localStorage.getItem('token')}`
+              }
+            });
+            if (!res.ok) throw new Error('Failed to delete role');
+            fetchClubData();
+          } catch (err: any) {
+            setError(err.message);
+          }
         }
-      });
-      if (!res.ok) throw new Error('Failed to delete role');
-      fetchClubData();
-    } catch (err: any) {
-      setError(err.message);
-    }
+      }
+    });
   };
 
   const handleToggleAdmin = async (userId: string, isAdmin: boolean) => {
@@ -706,32 +742,15 @@ export default function ManageClub() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Avatar Image</label>
-                    <div className="flex items-center gap-4 mb-2">
-                      {avatarUrl ? (
-                        <img referrerPolicy="no-referrer" src={avatarUrl} alt="Avatar" className="w-12 h-12 rounded-xl object-cover" />
-                      ) : (
-                        <div className="w-12 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
-                          <ImageIcon className="w-5 h-5 text-neutral-500" />
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => fileInputRef.current?.click()}
-                        className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
-                      >
-                        <Upload className="w-4 h-4" /> Upload
-                      </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        onChange={(e) => handleFileUpload(e, 'avatar')}
-                        className="hidden"
-                        accept="image/*"
-                      />
-                    </div>
+                    <ImageUploadInput
+                      label="Avatar Image"
+                      value={avatarUrl}
+                      onChange={setAvatarUrl}
+                      type="avatar"
+                      uploadUrl={`/api/upload?type=club&id=${club.id}`}
+                    />
                     {imageHistory.filter(h => h.type === 'AVATAR').length > 0 && (
-                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mt-3">
                         {imageHistory.filter(h => h.type === 'AVATAR').map(h => (
                           <img referrerPolicy="no-referrer"
                             key={h.id}
@@ -746,32 +765,15 @@ export default function ManageClub() {
                     )}
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-neutral-300 mb-1.5">Banner Image</label>
-                    <div className="flex items-center gap-4 mb-2">
-                      {bannerUrl ? (
-                        <img referrerPolicy="no-referrer" src={bannerUrl} alt="Banner" className="w-20 h-12 rounded-xl object-cover" />
-                      ) : (
-                        <div className="w-20 h-12 rounded-xl bg-neutral-800 flex items-center justify-center">
-                          <ImageIcon className="w-5 h-5 text-neutral-500" />
-                        </div>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => bannerInputRef.current?.click()}
-                        className="flex items-center gap-2 px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-lg text-sm transition-colors"
-                      >
-                        <Upload className="w-4 h-4" /> Upload
-                      </button>
-                      <input
-                        type="file"
-                        ref={bannerInputRef}
-                        onChange={(e) => handleFileUpload(e, 'banner')}
-                        className="hidden"
-                        accept="image/*"
-                      />
-                    </div>
+                    <ImageUploadInput
+                      label="Banner Image"
+                      value={bannerUrl}
+                      onChange={setBannerUrl}
+                      type="banner"
+                      uploadUrl={`/api/upload?type=club&id=${club.id}`}
+                    />
                     {imageHistory.filter(h => h.type === 'BANNER').length > 0 && (
-                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide mt-3">
                         {imageHistory.filter(h => h.type === 'BANNER').map(h => (
                           <img referrerPolicy="no-referrer"
                             key={h.id}
@@ -833,10 +835,11 @@ export default function ManageClub() {
                 <div className="pt-4 flex justify-end">
                   <button
                     type="submit"
-                    className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-2.5 rounded-xl font-bold transition-colors"
+                    disabled={isSavingDetails}
+                    className="flex items-center gap-2 bg-primary-600 hover:bg-primary-500 text-white px-6 py-2.5 rounded-xl font-bold transition-colors disabled:opacity-50"
                   >
-                    <Save className="w-4 h-4" />
-                    Save Changes
+                    {isSavingDetails ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+                    {isSavingDetails ? 'Saving...' : 'Save Changes'}
                   </button>
                 </div>
               </form>

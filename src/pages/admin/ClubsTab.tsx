@@ -1,9 +1,11 @@
+import ConfirmModal from '../../components/ConfirmModal';
 import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
 import AdminPagination from '../../components/AdminPagination';
 import { Search, Plus, Trash2, Users, Edit2 } from 'lucide-react';
 import EditClubModal from './EditClubModal';
 import TagInput from '../../components/TagInput';
+import ImageUploadInput from '../../components/ImageUploadInput';
 
 export default function ClubsTab() {
   const [clubs, setClubs] = useState<any[]>([]);
@@ -17,7 +19,10 @@ export default function ClubsTab() {
   const [newClubName, setNewClubName] = useState('');
   const [newClubDesc, setNewClubDesc] = useState('');
   const [newClubTags, setNewClubTags] = useState('');
+  const [newClubAvatar, setNewClubAvatar] = useState('');
+  const [newClubBanner, setNewClubBanner] = useState('');
   const [editingClub, setEditingClub] = useState<any>(null);
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, config: null | {title: string, message: string, onConfirm: () => void, isDestructive?: boolean}}>({ isOpen: false, config: null });
 
   const fetchClubs = async (currentSearch = searchQuery, currentPage = page) => {
     try {
@@ -62,12 +67,14 @@ export default function ClubsTab() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${localStorage.getItem('token')}` 
         },
-        body: JSON.stringify({ name: newClubName, description: newClubDesc, tags: newClubTags })
+        body: JSON.stringify({ name: newClubName, description: newClubDesc, tags: newClubTags, avatarUrl: newClubAvatar, bannerUrl: newClubBanner })
       });
       if (res.ok) {
         setNewClubName('');
         setNewClubDesc('');
         setNewClubTags('');
+        setNewClubAvatar('');
+        setNewClubBanner('');
         setIsCreating(false);
         fetchClubs();
       }
@@ -77,23 +84,41 @@ export default function ClubsTab() {
   };
 
   const handleDeleteClub = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this club?')) return;
-    try {
-      const res = await fetch(`/api/admin/clubs/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        fetchClubs();
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Club',
+        message: 'Are you sure you want to delete this club? This action cannot be undone.',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/admin/clubs/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+              fetchClubs();
+            }
+          } catch (error) {
+            console.error('Failed to delete club', error);
+          }
+        }
       }
-    } catch (error) {
-      console.error('Failed to delete club', error);
-    }
+    });
   };
 
   
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen} 
+        title={confirmModal.config?.title || ''}
+        message={confirmModal.config?.message || ''}
+        isDestructive={confirmModal.config?.isDestructive}
+        onConfirm={() => confirmModal.config?.onConfirm()}
+        onCancel={() => setConfirmModal({ isOpen: false, config: null })}
+      />
       <div className="flex items-center justify-between mb-8">
         <div>
           <h2 className="text-2xl font-bold text-white mb-2">Club Management</h2>
@@ -137,6 +162,20 @@ export default function ClubsTab() {
                 tags={newClubTags}
                 onChange={setNewClubTags}
                 placeholder="e.g. Technology, Coding"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <ImageUploadInput
+                label="Avatar Image"
+                value={newClubAvatar}
+                onChange={setNewClubAvatar}
+                type="avatar"
+              />
+              <ImageUploadInput
+                label="Banner Image"
+                value={newClubBanner}
+                onChange={setNewClubBanner}
+                type="banner"
               />
             </div>
             <div className="flex justify-end gap-3">

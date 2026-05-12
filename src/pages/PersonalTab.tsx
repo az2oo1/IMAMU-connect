@@ -65,7 +65,7 @@ export default function PersonalTab() {
       {/* Cover Photo */}
       <div className="h-48 md:h-64 bg-neutral-900 relative group cursor-pointer overflow-hidden" onClick={() => bannerInputRef.current?.click()}>
         <OptimizedImage 
-          src={user.bannerUrl || `https://picsum.photos/seed/${user.id}_banner/1200/400`} 
+          src={user.bannerUrl} 
           alt="Cover" 
           variant="banner"
           className="w-full h-full object-cover transition-opacity group-hover:opacity-75"
@@ -83,7 +83,7 @@ export default function PersonalTab() {
           <div className="flex flex-col sm:flex-row gap-6 items-start sm:items-end">
             <div className="relative group cursor-pointer" onClick={() => avatarInputRef.current?.click()}>
               <OptimizedImage 
-                src={user.avatarUrl || `https://picsum.photos/seed/${user.id}/150/150`} 
+                src={user.avatarUrl} 
                 alt="Profile" 
                 variant="large"
                 className="w-24 h-24 sm:w-32 sm:h-32 rounded-2xl border-4 border-neutral-900 object-cover bg-neutral-800 shadow-lg transition-opacity group-hover:opacity-50"

@@ -32,6 +32,7 @@ import AdminClubsTab from './pages/admin/ClubsTab';
 import AdminCoursesTab from './pages/admin/CoursesTab';
 import AdminNewsTab from './pages/admin/NewsTab';
 import AdminReportsTab from './pages/admin/ReportsTab';
+import AdminSettingsTab from './pages/admin/SettingsTab';
 import ReportDetailsPage from './pages/ReportDetailsPage';
 import ArticlePage from './pages/ArticlePage';
 import ComposeArticle from './pages/ComposeArticle';
@@ -75,6 +76,7 @@ function AppContent() {
                 <Route path="courses" element={<AdminCoursesTab />} />
                 <Route path="news" element={<AdminNewsTab />} />
                 <Route path="reports" element={<AdminReportsTab />} />
+                <Route path="settings" element={<AdminSettingsTab />} />
               </Route>
 
               {/* Main App Routes */}

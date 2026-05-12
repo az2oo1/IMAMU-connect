@@ -154,7 +154,7 @@ export default function ReportDetailsPage() {
                     {report.type === 'MESSAGE' && (
                       <div className="flex gap-4">
                         <img 
-                          src={report.contentDetails.author?.avatarUrl || `https://picsum.photos/seed/${report.contentDetails.authorId}/100/100`} 
+                          src={report.contentDetails.author?.avatarUrl} 
                           alt="" 
                           className="w-10 h-10 rounded-full object-cover shrink-0"
                           referrerPolicy="no-referrer"
@@ -204,7 +204,7 @@ export default function ReportDetailsPage() {
                       {report.adminNoteAuthor ? (
                         <>
                           <img 
-                            src={report.adminNoteAuthor.avatarUrl || `https://picsum.photos/seed/admin/100/100`} 
+                            src={report.adminNoteAuthor.avatarUrl} 
                             className="w-8 h-8 rounded-full" 
                             alt=""
                             referrerPolicy="no-referrer"

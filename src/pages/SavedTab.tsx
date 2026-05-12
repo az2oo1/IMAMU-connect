@@ -70,7 +70,7 @@ export default function SavedTab() {
                  } catch (e) {}
               }
 
-              const displayImage = article.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null) || `https://picsum.photos/seed/${article.id}/800/600`;
+              const displayImage = article.photoUrl || (parsedImages.length > 0 ? parsedImages[0] : null);
               
               const articleData = {
                 ...article,
@@ -114,7 +114,7 @@ export default function SavedTab() {
                       {stripHtmlAndMarkdown(articleData.content ? articleData.content : articleData.excerpt)}
                     </p>
                     <div className="flex items-center gap-3 pt-4 border-t border-neutral-800">
-                       <OptimizedImage src={articleData.authorAvatar || `https://picsum.photos/seed/${authorName}/100/100`} alt="" variant="small" className="w-8 h-8 rounded-full border-2 border-neutral-800" />
+                       <OptimizedImage src={articleData.authorAvatar} alt="" variant="small" className="w-8 h-8 rounded-full border-2 border-neutral-800" />
                        <div className="text-sm">
                          <div className="text-white font-bold">{authorName}</div>
                          <div className="text-neutral-500">{articleData.date}</div>

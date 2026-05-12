@@ -19,6 +19,7 @@ interface User {
   createdAt?: string;
   role?: string;
   _count?: { followers: number; following: number; clubFollowing: number };
+  isPrivate?: boolean;
   clubMemberships?: any[];
 }
 
@@ -28,12 +29,12 @@ interface UserContextType {
   login: (username: string, pass: string) => Promise<any>;
   register: (username: string, pass: string, studentEmail?: string, googleEmail?: string) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string }) => Promise<void>;
+  updateProfile: (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string; isPrivate?: boolean }) => Promise<void>;
   uploadImage: (file: File, type: 'avatar' | 'banner') => Promise<void>;
   isVerified: boolean;
   verifyStudent: (email: string, code: string) => Promise<boolean>;
   isPrivateProfile: boolean;
-  setIsPrivateProfile: (val: boolean) => void;
+  setIsPrivateProfile: (val: boolean) => Promise<void>;
   isAuthReady: boolean;
 }
 
@@ -44,7 +45,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isAuthReady, setIsAuthReady] = useState(false);
   const [isVerified, setIsVerified] = useState(false);
-  const [isPrivateProfile, setIsPrivateProfile] = useState(false);
+
+  const isPrivateProfile = user?.isPrivate || false;
+
+  const setIsPrivateProfile = async (val: boolean) => {
+    await updateProfile({ isPrivate: val });
+  };
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -123,7 +129,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setIsVerified(false);
   };
 
-  const updateProfile = async (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string }) => {
+  const updateProfile = async (data: { name?: string; bio?: string;  links?: string[]; studentEmail?: string; googleEmail?: string; isPrivate?: boolean }) => {
     const token = localStorage.getItem('token');
     if (!token) throw new Error('Not authenticated');
 

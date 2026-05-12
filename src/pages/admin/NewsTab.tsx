@@ -1,3 +1,4 @@
+import ConfirmModal from '../../components/ConfirmModal';
 import { TableSkeleton } from '../../components/TableSkeleton';
 import React, { useState, useEffect } from 'react';
 import AdminPagination from '../../components/AdminPagination';
@@ -13,6 +14,7 @@ export default function NewsTab() {
   const [totalItems, setTotalItems] = useState(0);
   const LIMIT = 20;
   const [newTag, setNewTag] = useState('');
+  const [confirmModal, setConfirmModal] = useState<{isOpen: boolean, config: null | {title: string, message: string, onConfirm: () => void, isDestructive?: boolean}}>({ isOpen: false, config: null });
 
   const fetchArticles = async (currentSearch = searchQuery, currentPage = page) => {
     try {
@@ -51,18 +53,28 @@ export default function NewsTab() {
   }, []);
 
   const handleDeleteArticle = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this article?')) return;
-    try {
-      const res = await fetch(`/api/admin/news/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        fetchArticles();
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Article',
+        message: 'Are you sure you want to delete this article? This action cannot be undone.',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/admin/news/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+              fetchArticles();
+            }
+          } catch (error) {
+            console.error('Failed to delete article', error);
+          }
+        }
       }
-    } catch (error) {
-      console.error('Failed to delete article', error);
-    }
+    });
   };
 
   const handleAddTag = async (e: React.FormEvent) => {
@@ -87,23 +99,41 @@ export default function NewsTab() {
   };
 
   const handleDeleteTag = async (id: string) => {
-    if (!confirm('Are you sure you want to delete this tag?')) return;
-    try {
-      const res = await fetch(`/api/admin/news-tags/${id}`, {
-        method: 'DELETE',
-        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
-      });
-      if (res.ok) {
-        fetchTags();
+    setConfirmModal({
+      isOpen: true,
+      config: {
+        title: 'Delete Tag',
+        message: 'Are you sure you want to delete this tag? This action cannot be undone.',
+        isDestructive: true,
+        onConfirm: async () => {
+          setConfirmModal({ isOpen: false, config: null });
+          try {
+            const res = await fetch(`/api/admin/news-tags/${id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+            });
+            if (res.ok) {
+              fetchTags();
+            }
+          } catch (err) {
+            console.error('Failed to delete tag', err);
+          }
+        }
       }
-    } catch (err) {
-      console.error('Failed to delete tag', err);
-    }
+    });
   };
 
   
   return (
     <div className="p-8 max-w-7xl mx-auto">
+      <ConfirmModal 
+        isOpen={confirmModal.isOpen} 
+        title={confirmModal.config?.title || ''}
+        message={confirmModal.config?.message || ''}
+        isDestructive={confirmModal.config?.isDestructive}
+        onConfirm={() => confirmModal.config?.onConfirm()}
+        onCancel={() => setConfirmModal({ isOpen: false, config: null })}
+      />
       <div className="mb-8">
         <h2 className="text-2xl font-bold text-white mb-2">News Management</h2>
         <p className="text-neutral-400">Manage news articles written by users and news writers.</p>
